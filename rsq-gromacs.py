@@ -1,0 +1,2 @@
+class ProteinLigMin(object):
+    pass
