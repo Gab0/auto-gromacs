@@ -1,6 +1,9 @@
-from core.messages import welcome_message
+import shutil
 import argparse
 import sys
+import os
+
+from core.messages import welcome_message, backup_folder_already_exists
 
 
 class ProteinLigMin(object):
@@ -35,7 +38,39 @@ class ProteinLigMin(object):
         pass
 
     def gather_files(self):
-        pass
+        if not os.path.isfile(self.ligand_file):
+            print 'Ligand file not found at ', self.ligand_file
+            sys.exit()
+
+        elif not os.path.isfile(self.ligand_topology_file):
+            print 'Ligand Topology file not found at ', \
+                self.ligand_topology_file
+            sys.exit()
+
+        elif not os.path.isfile(self.protein_file):
+            print 'Protein file not found at ', self.protein_file
+            sys.exit()
+
+        else:
+            print 'All data files found'
+
+        if os.path.isdir(self.working_dir):
+            print "Folder '" + self.working_dir + "' Aready exist"
+            if os.path.isdir("BACKUP"):
+                print "ERROR: Backup folder already exists :( "
+                print backup_folder_already_exists
+                sys.exit()
+            else:
+                if os.rename(self.working_dir, "BACKUP"):
+                    print "Old " + self.working_dir + " was moved to BACKUP/"
+
+        os.mkdir(self.working_dir)
+        print "CHEERS: Working Directory " + self.working_dir + \
+              " created Successfully"
+        print "Moving the files to Working Directory" + self.working_dir
+        shutil.copy2(self.protein_file, self.working_dir + 'protein.pdb')
+        shutil.copy2(self.ligand_file, self.working_dir + 'ligand.gro')
+        shutil.copy2(self.ligand_topology_file, self.working_dir + 'ligand.itp')
 
     def pdb2gmx_proc(self):
         pass
@@ -98,3 +133,6 @@ if __name__ == '__main__':
         verbose=arguments.verbose,
         quiet=arguments.quiet
     )
+
+    obj.welcome()
+    obj.gather_files()

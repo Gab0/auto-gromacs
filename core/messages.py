@@ -14,3 +14,8 @@ welcome_message = """
         Do not remove the original authors name & credits in redistributions or
         modified version.
         """
+backup_folder_already_exists = """
+    POSSIBLE SOLUTION: A backup folder already present.
+    You may loose your work if we replace , so change your
+    Working Directory or delete the folder BACKUP
+"""
