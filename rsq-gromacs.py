@@ -2,8 +2,9 @@ import shutil
 import argparse
 import sys
 import os
-
+import subprocess
 from core.messages import welcome_message, backup_folder_already_exists
+from core import settings
 
 
 class ProteinLigMin(object):
@@ -34,8 +35,20 @@ class ProteinLigMin(object):
     def exit_program(self):
         pass
 
-    def run_process(self):
-        pass
+    @staticmethod
+    def run_process(step_no, step_name, command):
+        print "INFO: Attempting to execute " + step_name + \
+              " [STEP:" + step_no + "]"
+        ret = subprocess.call(command, shell=True)
+        if ret != 0:
+            if ret < 0:
+                print "HEADS UP: Killed by signal :(", -ret
+                sys.exit()
+            else:
+                print "HEADS UP: Command failed with return code", ret
+                sys.exit()
+        else:
+            print 'Completed!'
 
     def gather_files(self):
         if not os.path.isfile(self.ligand_file):
@@ -73,7 +86,16 @@ class ProteinLigMin(object):
         shutil.copy2(self.ligand_topology_file, self.working_dir + 'ligand.itp')
 
     def pdb2gmx_proc(self):
-        pass
+        print ">STEP1 : Initiating Procedure to generate topology for protein"
+        pdb2gmx = settings.g_prefix + "pdb2gmx"
+        step_no = "1"
+        step_name = "Topology Generation"
+        command = pdb2gmx + " -f " + self.working_dir + "protein.pdb -o " + \
+            self.working_dir + "protein.gro -ignh -p " + \
+            self.working_dir + "topol.top -i " + self.working_dir + \
+            "posre.itp -ff gromos53a6 -water spc >> " + \
+            self.working_dir + "step1.log 2>&1"
+        self.run_process(step_no, step_name, command)
 
     def prepare_system(self):
         pass
