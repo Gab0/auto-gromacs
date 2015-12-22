@@ -198,7 +198,7 @@ class ProteinLigMin(object):
 
     def write_em_mdp(self):
         print ">NOTE: Writing em.mdp"
-        #TODO: Better name
+        # TODO: Better name
         some_file = open(self.working_dir + "em.mdp", "w")
         data = """
         ; LINES STARTING WITH ';' ARE COMMENTS
@@ -237,7 +237,7 @@ class ProteinLigMin(object):
         print ">STEP5 : Initiating Procedure to Add Ions & Neutralise the Complex"
         # grompp -f em.mdp -c solv.gro -p topol.top -o ions.tpr
         # genion -s ions.tpr -o solv_ions.gro -p topol.top -pname NA -nname CL -nn X -np X
-        #TODO: Better name. Whats this?
+        # TODO: Better name. Whats this?
         grompp = g_prefix + "grompp"
         step_no = "5"
         step_name = "Check Ions "
@@ -289,19 +289,69 @@ class ProteinLigMin(object):
         print "DOUBLE CHEERS: SUCCESFULY PREPARED SYSTEM FOR SIMULATION"
 
     def create_em_mdp(self):
-        pass
+        # TODO: better name
+        some_file = open(self.working_dir + "em_real.mdp", "w")
+        EmMdp = """
+        ; LINES STARTING WITH ';' ARE COMMENTS
+        title        = Minimization    ; Title of run
+
+        ; Parameters describing what to do, when to stop and what to save
+        integrator     = steep        ; Algorithm (steep = steepest descent minimization)
+        emtol          = 100.0      ; Stop minimization when the maximum force < 1.0 kJ/mol
+        emstep         = 0.01      ; Energy step size
+        nsteps         = 50000          ; Maximum number of (minimization) steps to perform
+        energygrps     = Protein UNK    ; Which energy group(s) to write to disk
+
+        ; Parameters describing how to find the neighbors of each atom and how to calculate the interactions
+        nstlist        = 1            ; Frequency to update the neighbor list and long range forces
+        ns_type        = grid        ; Method to determine neighbor list (simple, grid)
+        rlist          = 1.0        ; Cut-off for making neighbor list (short range forces)
+        coulombtype    = PME        ; Treatment of long range electrostatic interactions
+        rcoulomb       = 1.0        ; long range electrostatic cut-off
+        rvdw           = 1.0        ; long range Van der Waals cut-off
+        pbc            = xyz         ; Periodic Boundary Conditions (yes/no)
+        """
+        some_file.write(EmMdp)
+        print "CHEERS: em_real.mdp SUCCESSFULLY GENERATED :)"
 
     def minimize(self):
-        pass
+        print "MESSAGE: "
+        t = raw_input(
+            "Did you check your complex !! do you wish to continue: (y/n)")
+
+        if (t == 'y'):
+
+            print ">STEP7 : Preparing the files for Minimisation"
+            # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
+            # mdrun -v -deffnm em
+            grompp = g_prefix + "grompp"
+            mdrun = g_prefix + "mdrun"
+            StepNo = "7"
+            StepName = "Prepare files for Minimisation"
+            # max warn 3 only for now
+            command = grompp + " -f " + self.working_dir + "em_real.mdp -c " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "em.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step7.log 2>&1"
+            self.run_process(StepNo, StepName, command)
+
+            StepNo = "8"
+            StepName = " Minimisation"
+            # $command="g_mdrun -v -nt ".$nproc." -s ".$path.$tpr." -c ".$path.$out." -o ".$path.$trr." -x ".$path.$xtc ."-g ".$path.$logfile." > ".$path.$clog." 2>&1";
+            command = mdrun + " -v  -s " + self.working_dir + "em.tpr -c " + self.working_dir + "em.gro -o " + self.working_dir + "em.trr -e " + self.working_dir + "em.edr -x " + self.working_dir + "em.xtc -g " + self.working_dir + "em.log > " + self.working_dir + "step8.log 2>&1"
+            self.run_process(StepNo, StepName, command)
+        else:
+            print "Exiting on user request "
+            sys.exit()
 
     def nvt(self):
         pass
+        # Never used
 
     def npt(self):
         pass
+        # Never used
 
     def md(self):
         pass
+        # Never used
 
 
 if __name__ == '__main__':
