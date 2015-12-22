@@ -177,7 +177,23 @@ class ProteinLigMin(object):
         print "CHEERS: STEP[2] SUCCESSFULLY COMPLETED :)\n\n\n"
 
     def solvate_complex(self):
-        pass
+        # editconf -f system.gro -o newbox.gro -bt cubic -d 1 -c
+        # genbox -cp newbox.gro -cs spc216.gro -p topol.top -o solv.gro
+
+
+        print ">STEP3 : Initiating Procedure to Solvate Complex"
+        editconf = settings.g_prefix + "editconf"
+        step_no = "3"
+        step_name = "Defining the Box"
+        command = editconf + " -f " + self.working_dir + "system.gro -o " + self.working_dir + "newbox.gro -bt cubic -d 1 -c >> " + self.working_dir + "step3.log 2>&1"
+        self.run_process(step_no, step_name, command)
+
+        print ">STEP4 : Initiating Procedure to Solvate Complex"
+        genbox = settings.g_prefix + "genbox"
+        step_no = "4"
+        step_name = "Solvating the Box"
+        command = genbox + " -cp " + self.working_dir + "newbox.gro -p " + self.working_dir + "topol.top -cs spc216.gro -o " + self.working_dir + "solv.gro >> " + self.working_dir + "step4.log 2>&1"
+        self.run_process(step_no, step_name, command)
 
     def write_em_mdp(self):
         pass
