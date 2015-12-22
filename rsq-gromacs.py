@@ -1,8 +1,23 @@
 from core.messages import welcome_message
 import argparse
+import sys
 
 
 class ProteinLigMin(object):
+    def __init__(self, *args, **kwargs):
+        self.ligand_file = kwargs.pop('ligand_file')
+        self.ligand_topology_file = kwargs.pop('ligand_topology_file')
+        self.protein_file = kwargs.pop('protein_file')
+        self.working_dir = kwargs.pop('working_dir')
+
+        self.verbose = kwargs.pop('verbose')
+        self.quiet = kwargs.pop('quiet')
+
+        # A user cant use both the verbose and the quiet flag together
+        if self.verbose is True and self.quiet is True:
+            print 'Can\'t use both the verbose and quiet flags together'
+            sys.exit()
+
     @staticmethod
     def welcome():
         """
@@ -10,7 +25,7 @@ class ProteinLigMin(object):
         """
         print welcome_message
 
-    def check_file(self, fielname):
+    def check_file(self, filename):
         pass
 
     def exit_program(self):
@@ -72,6 +87,14 @@ if __name__ == '__main__':
     parser.add_argument('-q', '--quiet', help='Be very quit',
                         action="store_true")
 
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
-    print args
+    # TODO: Think of a better name
+    obj = ProteinLigMin(
+        ligand_file=arguments.ligand,
+        ligand_topology_file=arguments.itp,
+        protein_file=arguments.protein,
+        working_dir=arguments.wdir,
+        verbose=arguments.verbose,
+        quiet=arguments.quiet
+    )
