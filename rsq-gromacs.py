@@ -9,9 +9,9 @@ from core import settings
 
 class ProteinLigMin(object):
     def __init__(self, *args, **kwargs):
-        self.ligand_file = kwargs.pop('ligand_file')
-        self.ligand_topology_file = kwargs.pop('ligand_topology_file')
-        self.protein_file = kwargs.pop('protein_file')
+        self.ligand_file_path = kwargs.pop('ligand_file')
+        self.ligand_topology_file_path = kwargs.pop('ligand_topology_file')
+        self.protein_file_path = kwargs.pop('protein_file')
         self.working_dir = kwargs.pop('working_dir')
 
         self.verbose = kwargs.pop('verbose')
@@ -51,17 +51,17 @@ class ProteinLigMin(object):
             print 'Completed!'
 
     def gather_files(self):
-        if not os.path.isfile(self.ligand_file):
-            print 'Ligand file not found at ', self.ligand_file
+        if not os.path.isfile(self.ligand_file_path):
+            print 'Ligand file not found at ', self.ligand_file_path
             sys.exit()
 
-        elif not os.path.isfile(self.ligand_topology_file):
+        elif not os.path.isfile(self.ligand_topology_file_path):
             print 'Ligand Topology file not found at ', \
-                self.ligand_topology_file
+                self.ligand_topology_file_path
             sys.exit()
 
-        elif not os.path.isfile(self.protein_file):
-            print 'Protein file not found at ', self.protein_file
+        elif not os.path.isfile(self.protein_file_path):
+            print 'Protein file not found at ', self.protein_file_path
             sys.exit()
 
         else:
@@ -81,9 +81,10 @@ class ProteinLigMin(object):
         print "CHEERS: Working Directory " + self.working_dir + \
               " created Successfully"
         print "Moving the files to Working Directory" + self.working_dir
-        shutil.copy2(self.protein_file, self.working_dir + 'protein.pdb')
-        shutil.copy2(self.ligand_file, self.working_dir + 'ligand.gro')
-        shutil.copy2(self.ligand_topology_file, self.working_dir + 'ligand.itp')
+        shutil.copy2(self.protein_file_path, self.working_dir + 'protein.pdb')
+        shutil.copy2(self.ligand_file_path, self.working_dir + 'ligand.gro')
+        shutil.copy2(self.ligand_topology_file_path,
+                     self.working_dir + 'ligand.itp')
 
     def pdb2gmx_proc(self):
         print ">STEP1 : Initiating Procedure to generate topology for protein"
@@ -91,14 +92,89 @@ class ProteinLigMin(object):
         step_no = "1"
         step_name = "Topology Generation"
         command = pdb2gmx + " -f " + self.working_dir + "protein.pdb -o " + \
-            self.working_dir + "protein.gro -ignh -p " + \
-            self.working_dir + "topol.top -i " + self.working_dir + \
-            "posre.itp -ff gromos53a6 -water spc >> " + \
-            self.working_dir + "step1.log 2>&1"
+                  self.working_dir + "protein.gro -ignh -p " + \
+                  self.working_dir + "topol.top -i " + self.working_dir + \
+                  "posre.itp -ff gromos53a6 -water spc >> " + \
+                  self.working_dir + "step1.log 2>&1"
         self.run_process(step_no, step_name, command)
 
     def prepare_system(self):
-        pass
+
+        print ">STEP2 : Initiating Precedure to make system[Protein+Ligand]"
+        start_from_line = 3  # or whatever line I need to jump to
+
+        # TODO: WHAT IS THIS?
+        protein = self.working_dir + "protein.gro"
+        system = self.working_dir + "system.gro"
+        ligand = self.working_dir + "ligand.gro"
+
+        protein_file = open(protein, "r", 0)
+        ligand_file = open(ligand, "r", 0)
+        system_file = open(system, 'wa', 0)
+
+        # get the last line of protein
+        # get the count of Protein and Ligand files
+        protien_lines_count = len(protein_file.readlines())
+        ligand_lines_count = len(ligand_file.readlines())
+
+        # print protien_lines_count
+        # print ligand_lines_count
+        # count of the system
+        # TODO: Better name
+        SystemCount = protien_lines_count + ligand_lines_count - 6
+        # print SystemCount
+        protein_file.close()
+        ligand_file.close()
+
+        # open files for reading
+        protein_file = open(protein, "r", 0)
+        ligand_file = open(ligand, "r", 0)
+
+        system_file.write(
+            "System.gro Designed for Simulation by [bngromacs.py]\n")
+        system_file.write(str(SystemCount) + "\n")
+
+        line_counter = 1
+        for line in protein_file:
+            if line_counter in range(start_from_line,
+                                     protien_lines_count):  # start_from_line :
+                # print line
+                system_file.write(line)
+            line_counter += 1
+        protein_file.close()
+
+        line_counter = 1
+        for line in ligand_file:
+            if line_counter in range(start_from_line, ligand_lines_count):
+                # print line
+                system_file.write(line)
+            line_counter += 1
+
+            # get the last line of protein [the coordinates of the center]
+        protein_file = open(protein, "r", 0)
+        last_line = protein_file.readlines()[-1]
+        # print last_line
+        system_file.write(last_line)
+        print "CHEERS: system.gro WAS GENERATED SUCCESSFULLY"
+
+        f1 = open(self.working_dir + 'topol.top', 'r')
+        f2 = open(self.working_dir + 'topol_temp.top', 'w')
+        for line in f1:
+            f2.write(line.replace('; Include water topology',
+                                  '; Include Ligand topology\n #include "ligand.itp"\n\n\n; Include water topology '))
+        f1.close()
+        f2.close()
+        # swaping the files to get the original file
+        f1 = open(self.working_dir + 'topol.top', 'w')
+        f2 = open(self.working_dir + 'topol_temp.top', 'r')
+        for line in f2:
+            f1.write(line)
+        f1.write("UNK        1\n")
+        f1.close()
+        f2.close()
+        os.unlink(self.working_dir + 'topol_temp.top')
+        print "INFO: Topology File Updated with Ligand topology info "
+        print "CHEERS: STEP[2] SUCCESSFULLY COMPLETED :)\n\n\n"
 
     def solvate_complex(self):
         pass
