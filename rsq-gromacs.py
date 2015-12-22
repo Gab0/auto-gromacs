@@ -1,4 +1,5 @@
 from core.messages import welcome_message
+import argparse
 
 
 class ProteinLigMin(object):
@@ -56,4 +57,21 @@ class ProteinLigMin(object):
 
 
 if __name__ == '__main__':
-    ProteinLigMin.welcome()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-l', '--ligand',
+                        help='Input a ligand file [*.gro]')
+    parser.add_argument('-i', '--itp',
+                        help='Input a ligand topology file [*.itp]')
+    parser.add_argument('-p', '--protein',
+                        help='Input a protein file (default:protein.pdb)')
+    parser.add_argument('-w', '--wdir',
+                        help='Working Directory of project (default:work)')
+    parser.add_argument('-v', '--verbose', help='Loud and Noisy[default]',
+                        action="store_true")
+    parser.add_argument('-q', '--quiet', help='Be very quit',
+                        action="store_true")
+
+    args = parser.parse_args()
+
+    print args
