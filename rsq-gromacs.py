@@ -5,6 +5,7 @@ import os
 import subprocess
 from core.messages import welcome_message, backup_folder_already_exists
 from core import settings
+from core.settings import g_prefix
 
 
 class ProteinLigMin(object):
@@ -222,11 +223,70 @@ class ProteinLigMin(object):
         some_file.write(str(data))
         some_file.close()
 
-    def file_copy(self):
-        pass
+    @staticmethod
+    def file_copy(source, destination):
+        # TODO: There must be something better in the os module?
+        in_file = open(source, 'r')
+        out_file = open(destination, 'w')
+        temp = in_file.read()
+        out_file.write(temp)
+        in_file.close()
+        out_file.close()
 
     def add_ions(self):
-        pass
+        print ">STEP5 : Initiating Procedure to Add Ions & Neutralise the Complex"
+        # grompp -f em.mdp -c solv.gro -p topol.top -o ions.tpr
+        # genion -s ions.tpr -o solv_ions.gro -p topol.top -pname NA -nname CL -nn X -np X
+        #TODO: Better name. Whats this?
+        grompp = g_prefix + "grompp"
+        step_no = "5"
+        step_name = "Check Ions "
+        command = grompp + " -f " + self.working_dir + "em.mdp -c " + self.working_dir + "solv.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "ions.tpr -po " + self.working_dir + "mdout.mdp > " + self.working_dir + "step5.log 2>&1"
+        self.run_process(step_no, step_name, command)
+
+        # calculating the charge of the system
+        # TODO: What iis this doing? word??? Better name!
+        word = 'total'  # Your word
+
+        with open(self.working_dir + 'step5.log') as f:
+            for line in f:
+                if word in line:
+                    s_line = line.strip().split()
+                    two_words = (s_line[s_line.index(word) + 1],
+                                 s_line[s_line.index(word) + 2])
+                    charge = two_words[1]
+                    break
+
+        # TODO: This charge varibale might break the code
+        print "Charge of the system is " + charge
+        charge = float(charge)
+        charge = round(charge)
+
+        if charge > 0:
+            print "System has positive charge ."
+            print "Adding " + str(charge) + " CL ions to Neutralize the system"
+            genion = g_prefix + "genion"
+            step_no = "6"
+            step_name = "Adding Negative Ions "
+            command = genion + " -s " + self.working_dir + "ions.tpr -o " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -nname CL -nn " + str(
+                charge) + " -g " + self.working_dir + "step6.log 2>&1 << EOF\nSOL\nEOF"
+            self.run_process(step_no, step_name, command)
+
+        elif charge < 0:
+            print "charge is negative"
+            print "Adding " + str(-charge) + " CL ions to Neutralize the system"
+            genion = g_prefix + "genion"
+            step_no = "6"
+            step_name = "Adding Positive Ions "
+            command = genion + " -s " + self.working_dir + "ions.tpr -o " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -pname NA -np " + str(
+                -charge) + " << EOF\nSOL\nEOF"
+            self.run_process(step_no, step_name, command)
+
+        elif charge == 0:
+            print "System has Neutral charge , No adjustments Required :)"
+            self.file_copy('work/ions.tpr', "work/solv_ions.tpr")
+
+        print "DOUBLE CHEERS: SUCCESFULY PREPARED SYSTEM FOR SIMULATION"
 
     def create_em_mdp(self):
         pass
