@@ -347,8 +347,20 @@ class ProteinLigMin(object):
         # Never used
 
     def md(self):
-        pass
-        # Never used
+        print "CHEERS :) WE ARE CLOSE TO SUCCESS :):)"
+        print ">STEP13 : Initiating the Production Run"
+        grompp = settings.g_prefix + "grompp"
+        mdrun = settings.g_prefix + "mdrun"
+        step_no = "13"
+        step_name = "Preparing files for NPT Equiliberation"
+        # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
+        command = grompp + "-f " + self.working_dir + "md.mdp -c " + self.working_dir + "npt.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "md.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step13.log 2>&1"
+        self.run_process(step_no, step_name, command)
+
+        step_no = "14"
+        step_name = "NPT Equiliberation"
+        command = mdrun + " -v  -s " + self.working_dir + "md.tpr -c " + self.working_dir + "md.gro -o " + self.working_dir + "md.trr -e " + self.working_dir + "md.edr -x " + self.working_dir + "md.xtc -g " + self.working_dir + "md.log > " + self.working_dir + "step14.log 2>&1"
+        self.run_process(step_no, step_name, command)
 
 
 if __name__ == '__main__':
