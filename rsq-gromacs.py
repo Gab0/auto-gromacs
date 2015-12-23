@@ -339,8 +339,20 @@ class ProteinLigMin(object):
             sys.exit()
 
     def nvt(self):
-        pass
-        # Never used
+        print ">STEP9 : Initiating the Procedure to Equiliberate the System"
+        print "Beginging Equiliberation with NVT Ensemble"
+        grompp = settings.g_prefix + "grompp"
+        mdrun = settings.g_prefix + "mdrun"
+        step_no = "9"
+        step_name = "Preparing files for NVT Equiliberation"
+        # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
+        command = grompp + "-f " + self.working_dir + "nvt.mdp -c " + self.working_dir + "em.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "nvt.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step9.log 2>&1"
+        self.run_process(step_no, step_name, command)
+
+        step_no = "10"
+        step_name = "NVT Equiliberation"
+        command = mdrun + " -v  -s " + self.working_dir + "nvt.tpr -c " + self.working_dir + "nvt.gro -o " + self.working_dir + "nvt.trr -e " + self.working_dir + "nvt.edr -x " + self.working_dir + "nvt.xtc -g " + self.working_dir + "nvt.log > " + self.working_dir + "step10.log 2>&1"
+        self.run_process(step_no, step_name, command)
 
     def npt(self):
         print ">STEP11 : Initiating the Procedure to Equiliberate the System"
