@@ -3,7 +3,8 @@ import argparse
 import sys
 import os
 import subprocess
-from core.messages import welcome_message, backup_folder_already_exists
+from core.messages import welcome_message, backup_folder_already_exists, \
+    write_em_mpd_data, create_em_mdp_data
 from core import settings
 
 
@@ -92,10 +93,10 @@ class ProteinLigMin(object):
         step_no = "1"
         step_name = "Topology Generation"
         command = pdb2gmx + " -f " + self.working_dir + "protein.pdb -o " + \
-                  self.working_dir + "protein.gro -ignh -p " + \
-                  self.working_dir + "topol.top -i " + self.working_dir + \
-                  "posre.itp -ff gromos53a6 -water spc >> " + \
-                  self.working_dir + "step1.log 2>&1"
+            self.working_dir + "protein.gro -ignh -p " + \
+            self.working_dir + "topol.top -i " + self.working_dir + \
+            "posre.itp -ff gromos53a6 -water spc >> " + \
+            self.working_dir + "step1.log 2>&1"
         self.run_process(step_no, step_name, command)
 
     def prepare_system(self):
@@ -160,7 +161,9 @@ class ProteinLigMin(object):
         f2 = open(self.working_dir + 'topol_temp.top', 'w')
         for line in f1:
             f2.write(line.replace('; Include water topology',
-                                  '; Include Ligand topology\n #include "ligand.itp"\n\n\n; Include water topology '))
+                                  '; Include Ligand topology\n #include '
+                                  '"ligand.itp"\n\n\n; Include water topology ')
+                     )
         f1.close()
         f2.close()
         # swaping the files to get the original file
@@ -183,40 +186,26 @@ class ProteinLigMin(object):
         editconf = settings.g_prefix + "editconf"
         step_no = "3"
         step_name = "Defining the Box"
-        command = editconf + " -f " + self.working_dir + "system.gro -o " + self.working_dir + "newbox.gro -bt cubic -d 1 -c >> " + self.working_dir + "step3.log 2>&1"
+        command = editconf + " -f " + self.working_dir + "system.gro -o " + \
+            self.working_dir + "newbox.gro -bt cubic -d 1 -c >> " + \
+            self.working_dir + "step3.log 2>&1"
         self.run_process(step_no, step_name, command)
 
         print ">STEP4 : Initiating Procedure to Solvate Complex"
         genbox = settings.g_prefix + "genbox"
         step_no = "4"
         step_name = "Solvating the Box"
-        command = genbox + " -cp " + self.working_dir + "newbox.gro -p " + self.working_dir + "topol.top -cs spc216.gro -o " + self.working_dir + "solv.gro >> " + self.working_dir + "step4.log 2>&1"
+        command = genbox + " -cp " + self.working_dir + "newbox.gro -p " + \
+            self.working_dir + "topol.top -cs spc216.gro -o " + \
+            self.working_dir + "solv.gro >> " + self.working_dir + \
+            "step4.log 2>&1"
         self.run_process(step_no, step_name, command)
 
     def write_em_mdp(self):
         print ">NOTE: Writing em.mdp"
         # TODO: Better name
         some_file = open(self.working_dir + "em.mdp", "w")
-        data = """
-        ; LINES STARTING WITH ';' ARE COMMENTS
-        title         = Minimization    ; Title of run
-
-        ; Parameters describing what to do, when to stop and what to save
-        integrator    = steep        ; Algorithm (steep = steepest descent minimization)
-        emtol         = 100.0      ; Stop minimization when the maximum force < 1.0 kJ/mol
-        emstep        = 0.01      ; Energy step size
-        nsteps        = 50000          ; Maximum number of (minimization) steps to perform
-        energygrps    = system    ; Which energy group(s) to write to disk
-
-        ; Parameters describing how to find the neighbors of each atom and how to calculate the interactions
-        nstlist       = 1            ; Frequency to update the neighbor list and long range forces
-        ns_type       = grid        ; Method to determine neighbor list (simple, grid)
-        rlist         = 1.0        ; Cut-off for making neighbor list (short range forces)
-        coulombtype   = PME        ; Treatment of long range electrostatic interactions
-        rcoulomb      = 1.0        ; long range electrostatic cut-off
-        rvdw          = 1.0        ; long range Van der Waals cut-off
-        pbc           = xyz         ; Periodic Boundary Conditions (yes/no)
-        """
+        data = write_em_mpd_data
         some_file.write(str(data))
         some_file.close()
 
@@ -231,14 +220,18 @@ class ProteinLigMin(object):
         out_file.close()
 
     def add_ions(self):
-        print ">STEP5 : Initiating Procedure to Add Ions & Neutralise the Complex"
-        # grompp -f em.mdp -c solv.gro -p topol.top -o ions.tpr
-        # genion -s ions.tpr -o solv_ions.gro -p topol.top -pname NA -nname CL -nn X -np X
+        print ">STEP5 : Initiating Procedure to Add Ions & Neutralise the " \
+              "Complex"
+
         # TODO: Better name. Whats this?
         grompp = settings.g_prefix + "grompp"
         step_no = "5"
         step_name = "Check Ions "
-        command = grompp + " -f " + self.working_dir + "em.mdp -c " + self.working_dir + "solv.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "ions.tpr -po " + self.working_dir + "mdout.mdp > " + self.working_dir + "step5.log 2>&1"
+        command = grompp + " -f " + self.working_dir + "em.mdp -c " + \
+            self.working_dir + "solv.gro -p " + self.working_dir + \
+            "topol.top -o " + self.working_dir + "ions.tpr -po " + \
+            self.working_dir + "mdout.mdp > " + self.working_dir + \
+            "step5.log 2>&1"
         self.run_process(step_no, step_name, command)
 
         # calculating the charge of the system
@@ -265,8 +258,11 @@ class ProteinLigMin(object):
             genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Negative Ions "
-            command = genion + " -s " + self.working_dir + "ions.tpr -o " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -nname CL -nn " + str(
-                charge) + " -g " + self.working_dir + "step6.log 2>&1 << EOF\nSOL\nEOF"
+            command = genion + " -s " + self.working_dir + "ions.tpr -o " + \
+                self.working_dir + "solv_ions.gro -p " + self.working_dir + \
+                "topol.top -nname CL -nn " + str(charge) + " -g " + \
+                self.working_dir + "step6.log 2>&1" \
+                " << EOF\nSOL\nEOF"
             self.run_process(step_no, step_name, command)
 
         elif charge < 0:
@@ -275,8 +271,10 @@ class ProteinLigMin(object):
             genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Positive Ions "
-            command = genion + " -s " + self.working_dir + "ions.tpr -o " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -pname NA -np " + str(
-                -charge) + " << EOF\nSOL\nEOF"
+            command = genion + " -s " + self.working_dir + "ions.tpr -o " + \
+                self.working_dir + "solv_ions.gro -p " + self.working_dir + \
+                "topol.top -pname NA -np " + str(-charge) + \
+                " << EOF\nSOL\nEOF"
             self.run_process(step_no, step_name, command)
 
         elif charge == 0:
@@ -288,26 +286,7 @@ class ProteinLigMin(object):
     def create_em_mdp(self):
         # TODO: better name
         some_file = open(self.working_dir + "em_real.mdp", "w")
-        em_mdp = """
-        ; LINES STARTING WITH ';' ARE COMMENTS
-        title        = Minimization    ; Title of run
-
-        ; Parameters describing what to do, when to stop and what to save
-        integrator     = steep        ; Algorithm (steep = steepest descent minimization)
-        emtol          = 100.0      ; Stop minimization when the maximum force < 1.0 kJ/mol
-        emstep         = 0.01      ; Energy step size
-        nsteps         = 50000          ; Maximum number of (minimization) steps to perform
-        energygrps     = Protein UNK    ; Which energy group(s) to write to disk
-
-        ; Parameters describing how to find the neighbors of each atom and how to calculate the interactions
-        nstlist        = 1            ; Frequency to update the neighbor list and long range forces
-        ns_type        = grid        ; Method to determine neighbor list (simple, grid)
-        rlist          = 1.0        ; Cut-off for making neighbor list (short range forces)
-        coulombtype    = PME        ; Treatment of long range electrostatic interactions
-        rcoulomb       = 1.0        ; long range electrostatic cut-off
-        rvdw           = 1.0        ; long range Van der Waals cut-off
-        pbc            = xyz         ; Periodic Boundary Conditions (yes/no)
-        """
+        em_mdp = create_em_mdp_data
         some_file.write(em_mdp)
         print "CHEERS: em_real.mdp SUCCESSFULLY GENERATED :)"
 
@@ -316,7 +295,7 @@ class ProteinLigMin(object):
         t = raw_input(
             "Did you check your complex !! do you wish to continue: (y/n)")
 
-        if (t == 'y'):
+        if t == 'y':
 
             print ">STEP7 : Preparing the files for Minimisation"
             # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
@@ -326,13 +305,21 @@ class ProteinLigMin(object):
             step_no = "7"
             step_name = "Prepare files for Minimisation"
             # max warn 3 only for now
-            command = grompp + " -f " + self.working_dir + "em_real.mdp -c " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "em.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step7.log 2>&1"
+            command = grompp + " -f " + self.working_dir + "em_real.mdp -c " +\
+                self.working_dir + "solv_ions.gro -p " + self.working_dir\
+                + "topol.top -o " + self.working_dir + "em.tpr -po " +\
+                self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir\
+                + "step7.log 2>&1"
             self.run_process(step_no, step_name, command)
 
             step_no = "8"
             step_name = " Minimisation"
-            # $command="g_mdrun -v -nt ".$nproc." -s ".$path.$tpr." -c ".$path.$out." -o ".$path.$trr." -x ".$path.$xtc ."-g ".$path.$logfile." > ".$path.$clog." 2>&1";
-            command = mdrun + " -v  -s " + self.working_dir + "em.tpr -c " + self.working_dir + "em.gro -o " + self.working_dir + "em.trr -e " + self.working_dir + "em.edr -x " + self.working_dir + "em.xtc -g " + self.working_dir + "em.log > " + self.working_dir + "step8.log 2>&1"
+
+            command = mdrun + " -v  -s " + self.working_dir + "em.tpr -c " + \
+                self.working_dir + "em.gro -o " + self.working_dir + \
+                "em.trr -e " + self.working_dir + "em.edr -x " + \
+                self.working_dir + "em.xtc -g " + self.working_dir + \
+                "em.log > " + self.working_dir + "step8.log 2>&1"
             self.run_process(step_no, step_name, command)
         else:
             print "Exiting on user request "
@@ -346,12 +333,20 @@ class ProteinLigMin(object):
         step_no = "9"
         step_name = "Preparing files for NVT Equiliberation"
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
-        command = grompp + "-f " + self.working_dir + "nvt.mdp -c " + self.working_dir + "em.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "nvt.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step9.log 2>&1"
+        command = grompp + "-f " + self.working_dir + "nvt.mdp -c " + \
+            self.working_dir + "em.gro -p " + self.working_dir + \
+            "topol.top -o " + self.working_dir + "nvt.tpr -po " + \
+            self.working_dir + "mdout.mdp -maxwarn 3 > " + \
+            self.working_dir + "step9.log 2>&1"
         self.run_process(step_no, step_name, command)
 
         step_no = "10"
         step_name = "NVT Equiliberation"
-        command = mdrun + " -v  -s " + self.working_dir + "nvt.tpr -c " + self.working_dir + "nvt.gro -o " + self.working_dir + "nvt.trr -e " + self.working_dir + "nvt.edr -x " + self.working_dir + "nvt.xtc -g " + self.working_dir + "nvt.log > " + self.working_dir + "step10.log 2>&1"
+        command = mdrun + " -v  -s " + self.working_dir + "nvt.tpr -c " + \
+            self.working_dir + "nvt.gro -o " + self.working_dir + "nvt.trr -e "\
+            + self.working_dir + "nvt.edr -x " + self.working_dir + \
+            "nvt.xtc -g " + self.working_dir + "nvt.log > " + self.working_dir\
+            + "step10.log 2>&1"
         self.run_process(step_no, step_name, command)
 
     def npt(self):
@@ -362,12 +357,20 @@ class ProteinLigMin(object):
         step_no = "11"
         step_name = "Preparing files for NPT Equiliberation"
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
-        command = grompp + "-f " + self.working_dir + "npt.mdp -c " + self.working_dir + "nvt.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "npt.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step11.log 2>&1"
+        command = grompp + "-f " + self.working_dir + "npt.mdp -c " + \
+            self.working_dir + "nvt.gro -p " + self.working_dir + \
+            "topol.top -o " + self.working_dir + "npt.tpr -po " + \
+            self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + \
+            "step11.log 2>&1"
         self.run_process(step_no, step_name, command)
 
         step_no = "12"
         step_name = "NPT Equiliberation"
-        command = mdrun + " -v  -s " + self.working_dir + "npt.tpr -c " + self.working_dir + "npt.gro -o " + self.working_dir + "npt.trr -e " + self.working_dir + "npt.edr -x " + self.working_dir + "npt.xtc -g " + self.working_dir + "npt.log > " + self.working_dir + "step12.log 2>&1"
+        command = mdrun + " -v  -s " + self.working_dir + "npt.tpr -c " + \
+            self.working_dir + "npt.gro -o " + self.working_dir + \
+            "npt.trr -e " + self.working_dir + "npt.edr -x " + \
+            self.working_dir + "npt.xtc -g " + self.working_dir + "npt.log > "\
+            + self.working_dir + "step12.log 2>&1"
         self.run_process(step_no, step_name, command)
 
     def md(self):
@@ -378,12 +381,20 @@ class ProteinLigMin(object):
         step_no = "13"
         step_name = "Preparing files for NPT Equiliberation"
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
-        command = grompp + "-f " + self.working_dir + "md.mdp -c " + self.working_dir + "npt.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "md.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step13.log 2>&1"
+        command = grompp + "-f " + self.working_dir + "md.mdp -c " + \
+            self.working_dir + "npt.gro -p " + self.working_dir + \
+            "topol.top -o " + self.working_dir + "md.tpr -po " + \
+            self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + \
+            "step13.log 2>&1"
         self.run_process(step_no, step_name, command)
 
         step_no = "14"
         step_name = "NPT Equiliberation"
-        command = mdrun + " -v  -s " + self.working_dir + "md.tpr -c " + self.working_dir + "md.gro -o " + self.working_dir + "md.trr -e " + self.working_dir + "md.edr -x " + self.working_dir + "md.xtc -g " + self.working_dir + "md.log > " + self.working_dir + "step14.log 2>&1"
+        command = mdrun + " -v  -s " + self.working_dir + "md.tpr -c " + \
+            self.working_dir + "md.gro -o " + self.working_dir + "md.trr -e " +\
+            self.working_dir + "md.edr -x " + self.working_dir + "md.xtc -g " +\
+            self.working_dir + "md.log > " + self.working_dir + \
+            "step14.log 2>&1"
         self.run_process(step_no, step_name, command)
 
 
