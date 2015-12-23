@@ -343,8 +343,20 @@ class ProteinLigMin(object):
         # Never used
 
     def npt(self):
-        pass
-        # Never used
+        print ">STEP11 : Initiating the Procedure to Equiliberate the System"
+        print "Beginging Equiliberation with NPT Ensemble"
+        grompp = settings.g_prefix + "grompp"
+        mdrun = settings.g_prefix + "mdrun"
+        step_no = "11"
+        step_name = "Preparing files for NPT Equiliberation"
+        # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
+        command = grompp + "-f " + self.working_dir + "npt.mdp -c " + self.working_dir + "nvt.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "npt.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step11.log 2>&1"
+        self.run_process(step_no, step_name, command)
+
+        step_no = "12"
+        step_name = "NPT Equiliberation"
+        command = mdrun + " -v  -s " + self.working_dir + "npt.tpr -c " + self.working_dir + "npt.gro -o " + self.working_dir + "npt.trr -e " + self.working_dir + "npt.edr -x " + self.working_dir + "npt.xtc -g " + self.working_dir + "npt.log > " + self.working_dir + "step12.log 2>&1"
+        self.run_process(step_no, step_name, command)
 
     def md(self):
         print "CHEERS :) WE ARE CLOSE TO SUCCESS :):)"
