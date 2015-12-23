@@ -5,7 +5,6 @@ import os
 import subprocess
 from core.messages import welcome_message, backup_folder_already_exists
 from core import settings
-from core.settings import g_prefix
 
 
 class ProteinLigMin(object):
@@ -122,8 +121,7 @@ class ProteinLigMin(object):
         # print ligand_lines_count
         # count of the system
         # TODO: Better name
-        SystemCount = protien_lines_count + ligand_lines_count - 6
-        # print SystemCount
+        system_count = protien_lines_count + ligand_lines_count - 6
         protein_file.close()
         ligand_file.close()
 
@@ -133,7 +131,7 @@ class ProteinLigMin(object):
 
         system_file.write(
             "System.gro Designed for Simulation by [bngromacs.py]\n")
-        system_file.write(str(SystemCount) + "\n")
+        system_file.write(str(system_count) + "\n")
 
         line_counter = 1
         for line in protein_file:
@@ -180,7 +178,6 @@ class ProteinLigMin(object):
     def solvate_complex(self):
         # editconf -f system.gro -o newbox.gro -bt cubic -d 1 -c
         # genbox -cp newbox.gro -cs spc216.gro -p topol.top -o solv.gro
-
 
         print ">STEP3 : Initiating Procedure to Solvate Complex"
         editconf = settings.g_prefix + "editconf"
@@ -238,7 +235,7 @@ class ProteinLigMin(object):
         # grompp -f em.mdp -c solv.gro -p topol.top -o ions.tpr
         # genion -s ions.tpr -o solv_ions.gro -p topol.top -pname NA -nname CL -nn X -np X
         # TODO: Better name. Whats this?
-        grompp = g_prefix + "grompp"
+        grompp = settings.g_prefix + "grompp"
         step_no = "5"
         step_name = "Check Ions "
         command = grompp + " -f " + self.working_dir + "em.mdp -c " + self.working_dir + "solv.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "ions.tpr -po " + self.working_dir + "mdout.mdp > " + self.working_dir + "step5.log 2>&1"
@@ -265,7 +262,7 @@ class ProteinLigMin(object):
         if charge > 0:
             print "System has positive charge ."
             print "Adding " + str(charge) + " CL ions to Neutralize the system"
-            genion = g_prefix + "genion"
+            genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Negative Ions "
             command = genion + " -s " + self.working_dir + "ions.tpr -o " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -nname CL -nn " + str(
@@ -275,7 +272,7 @@ class ProteinLigMin(object):
         elif charge < 0:
             print "charge is negative"
             print "Adding " + str(-charge) + " CL ions to Neutralize the system"
-            genion = g_prefix + "genion"
+            genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Positive Ions "
             command = genion + " -s " + self.working_dir + "ions.tpr -o " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -pname NA -np " + str(
@@ -291,7 +288,7 @@ class ProteinLigMin(object):
     def create_em_mdp(self):
         # TODO: better name
         some_file = open(self.working_dir + "em_real.mdp", "w")
-        EmMdp = """
+        em_mdp = """
         ; LINES STARTING WITH ';' ARE COMMENTS
         title        = Minimization    ; Title of run
 
@@ -311,7 +308,7 @@ class ProteinLigMin(object):
         rvdw           = 1.0        ; long range Van der Waals cut-off
         pbc            = xyz         ; Periodic Boundary Conditions (yes/no)
         """
-        some_file.write(EmMdp)
+        some_file.write(em_mdp)
         print "CHEERS: em_real.mdp SUCCESSFULLY GENERATED :)"
 
     def minimize(self):
@@ -324,19 +321,19 @@ class ProteinLigMin(object):
             print ">STEP7 : Preparing the files for Minimisation"
             # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
             # mdrun -v -deffnm em
-            grompp = g_prefix + "grompp"
-            mdrun = g_prefix + "mdrun"
-            StepNo = "7"
-            StepName = "Prepare files for Minimisation"
+            grompp = settings.g_prefix + "grompp"
+            mdrun = settings.g_prefix + "mdrun"
+            step_no = "7"
+            step_name = "Prepare files for Minimisation"
             # max warn 3 only for now
             command = grompp + " -f " + self.working_dir + "em_real.mdp -c " + self.working_dir + "solv_ions.gro -p " + self.working_dir + "topol.top -o " + self.working_dir + "em.tpr -po " + self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir + "step7.log 2>&1"
-            self.run_process(StepNo, StepName, command)
+            self.run_process(step_no, step_name, command)
 
-            StepNo = "8"
-            StepName = " Minimisation"
+            step_no = "8"
+            step_name = " Minimisation"
             # $command="g_mdrun -v -nt ".$nproc." -s ".$path.$tpr." -c ".$path.$out." -o ".$path.$trr." -x ".$path.$xtc ."-g ".$path.$logfile." > ".$path.$clog." 2>&1";
             command = mdrun + " -v  -s " + self.working_dir + "em.tpr -c " + self.working_dir + "em.gro -o " + self.working_dir + "em.trr -e " + self.working_dir + "em.edr -x " + self.working_dir + "em.xtc -g " + self.working_dir + "em.log > " + self.working_dir + "step8.log 2>&1"
-            self.run_process(StepNo, StepName, command)
+            self.run_process(step_no, step_name, command)
         else:
             print "Exiting on user request "
             sys.exit()
