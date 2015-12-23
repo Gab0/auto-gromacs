@@ -242,7 +242,7 @@ class ProteinLigMin(object):
         self.run_process(step_no, step_name, command)
 
         # calculating the charge of the system
-        # TODO: What iis this doing? word??? Better name!
+        # TODO: What is this doing? word??? Better name!
         word = 'total'  # Your word
 
         with open(self.working_dir + 'step5.log') as f:
@@ -397,7 +397,8 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--protein',
                         help='Input a protein file (default:protein.pdb)')
     parser.add_argument('-w', '--wdir',
-                        help='Working Directory of project (default:work)')
+                        help='Working Directory of project (default:work)',
+                        default='work/')
     parser.add_argument('-v', '--verbose', help='Loud and Noisy[default]',
                         action="store_true")
     parser.add_argument('-q', '--quiet', help='Be very quit',
@@ -417,3 +418,10 @@ if __name__ == '__main__':
 
     obj.welcome()
     obj.gather_files()
+    obj.pdb2gmx_proc()
+    obj.prepare_system()
+    obj.solvate_complex()
+    obj.write_em_mdp()
+    obj.add_ions()
+    obj.create_em_mdp()
+    obj.minimize()
