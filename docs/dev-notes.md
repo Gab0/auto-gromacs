@@ -4,13 +4,19 @@
 
 
 ## 1. Introduction
-This is a library/module which acts as a wrapper around the commandline tools of [Gromacs](http://www.gromacs.org).
-The purpose of this tool is to make the usage of the tool more interactive for the beginers. 
-This is one of the modules of the drug discovery tools automation pipeline [rsquarelabs-core](https://github.com/rsquarelabs/rsquarelabs-core) by [rsquarelabs.org](http://rsquarelabs.org).  
-The library contains the presets of the protocols based on the gromacs tutorials by written [Justin A. Lemkul, Ph.Dl](http://www.bevanlab.biochem.vt.edu/Pages/Personal/justin/gmx-tutorials/).
-The library is programmable - well documented enough to write custom protocols, with no or least experience too.  
-The main purpose of this library is to automate the tasks with least or no programming experience.
+- This is a library/module which acts as a wrapper around the commandline tools of [Gromacs](http://www.gromacs.org).
+- The main purpose of this library is to automate the tasks with least or no programming experience.
+- The library makes the usage of the tool gromacs tool more interactive for the beginers. 
+- This is one of the modules of the drug discovery tools automation pipeline [rsquarelabs-core](https://github.com/rsquarelabs/rsquarelabs-core) by [rsquarelabs.org](http://rsquarelabs.org).  
+- The library contains the presets of the protocols based on the gromacs tutorials by written [Justin A. Lemkul, Ph.D](http://www.bevanlab.biochem.vt.edu/Pages/Personal/justin/gmx-tutorials/).
+- The library is programmable - well documented enough to write custom protocols, with no or least experience.  
 
+
+## 2. Features
+1. Automate the tasks
+2. Presets of most used protocols
+3. Protocol Customisation ()
+4. Notification by email once the task is done.
 
 ## 2.Protocols (PT)
 1. Protein Minimisation(P-M)
@@ -68,3 +74,10 @@ log_file - every print statement of the current should be converted into logging
 3. write_report - logger function which writes the report to report.log
 4. write_status - logger function which writes the status of the each step starting and ending 
 4. notify_with_email - notifies the user by email after the task is done. you get email from project.config
+
+
+
+
+## 4 Code File Structure 
+gromacs/__init__.py
+gromacs/utils.py

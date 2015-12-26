@@ -1,3 +1,2 @@
-rsq-gromacs.py is a simple automation script written in Python to perform basic 
-minimization and protein-ligand molecular dynamics by Gromacs
+rsq-gromacs.py is a simple automation script written in Python to perform basic minimization and protein-ligand molecular dynamics by Gromacs
 (http://www.gromacs.org)
