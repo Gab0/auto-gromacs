@@ -101,6 +101,10 @@ class ProteinLigMin(object):
                 print("Old " + self.working_dir + " was moved to BACKUP/")
 
         os.mkdir(self.working_dir)
+
+        global bashlog
+        bashlog = open(os.path.join(self.working_dir, 'bashlog'), 'w')
+
         print("CHEERS: Working Directory " + self.working_dir + \
               " created Successfully")
         print("Moving the files to Working Directory" + self.working_dir)
@@ -525,9 +529,7 @@ def parse_arguments():
 def main():
     arguments = parse_arguments()
 
-    global bashlog
-    bashlog = open('work/bashlog','w')
-    
+
     # TODO: Think of a better name
     obj = ProteinLigMin(
         ligand_file=arguments.ligand,
