@@ -1,2 +1,11 @@
-rsq-gromacs.py is a simple automation script written in Python to perform basic minimization and protein-ligand molecular dynamics by Gromacs
-(http://www.gromacs.org)
+autoGromacs is a simple script to automate Gromacs (http://www.gromacs.org) evaluations. 
+Based on rsq-gromacs, originally written by `utkbansal`.
+
+
+The original repository was located at `https://github.com/rsquarelabs/rsq-gromacs.git`, 
+but it seems to be gone.
+
+
+
+It was further modified by `gab0` to have a `setup.py` with executable scripts. 
+Further development is ongoing.
