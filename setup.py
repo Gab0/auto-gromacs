@@ -17,5 +17,9 @@ setup(
         'console_scripts': [
             "autogromacs=autogromacs.autoGromacs:main"
         ]
-    }
+    },
+	package_data={
+	'': ["mdp/*.mdp"]}
+
+
 )
