@@ -6,13 +6,16 @@ import os
 import subprocess
 import shutil
 
-from .core.messages import welcome_message, backup_folder_already_exists, \
-    write_em_mdp_data, create_em_mdp_data, general_nvt_data, general_npt_data, \
-    general_md_data
+from .core.messages import welcome_message, backup_folder_already_exists,\
+    general_nvt_data,  general_md_data
 from .core import settings
 
 
-bashlog = None 
+bashlog = None
+
+EM_MDP = "ions.mdp"
+EMW_MDP = "ions.mdp"
+NVT_MDP = "nvt.mdp"
 
 
 class ProteinLigMin(object):
@@ -31,6 +34,8 @@ class ProteinLigMin(object):
             self.ligand_topology_file_path = 'posre.itp'
 
         self.working_dir = kwargs.pop('working_dir')
+
+        self.module_dir = os.path.dirname(__file__)
 
         self.verbose = kwargs.pop('verbose')
         self.quiet = kwargs.pop('quiet')
@@ -133,18 +138,26 @@ class ProteinLigMin(object):
         step_no = "1"
         step_name = "Topology Generation"
 
+        FFs = [
+            "gromos54a7",
+            "amber03"
+        ]
         LogFile = "%sstep1_%s.log" % (self.working_dir,TARGET)
+
+        POSRE_PATH = os.path.join(self.working_dir, "posre.itp")
         command = [
             pdb2gmx,
             "-f", "%s%s.pdb" % (self.working_dir, TARGET),
-            "-o", "%s%s.gro" % (self.working_dir, TARGET), "-ignh",
-            "-i", "%sposre.itp" % self.working_dir,
+            "-o", "%s%s.gro" % (self.working_dir, TARGET),
+            #"-ignh",
+            #"-i", POSRE_PATH,
             "-p", "%stopol.top" % self.working_dir,
-            "-ff gromos54a7",
+            "-ff", FFs[1],
             "-water spce",
             ">> %s 2>&1" % LogFile
         ]
 
+        #assert(os.path.isfile(POSRE_PATH))
         command = " ".join(command)
         ERROR = self.run_process(step_no, step_name, command)
 
@@ -278,19 +291,20 @@ class ProteinLigMin(object):
         return self.run_process(step_no, step_name, command)
 
     def write_em_mdp(self):
-        print(">NOTE: Writing em.mdp")
-        with open(self.working_dir + "em.mdp", "w") as f:
-            f.write(str(write_em_mdp_data))
+        self.load_mdp(EM_MDP)
 
-    @staticmethod
-    def file_copy(source, destination):
-        # TODO: There must be something better in the os module?
-        in_file = open(source, 'r')
-        out_file = open(destination, 'w')
-        temp = in_file.read()
-        out_file.write(temp)
-        in_file.close()
-        out_file.close()
+    def load_mdp(self, mdpname):
+
+        if os.path.isfile(mdpname):
+            print(">Using user-defined %s" % mdpname)
+            Source = mdpname
+        else:
+            print(">Writing built-in %s" % mdpname)
+            Source = os.path.join(self.module_dir, "mdp", mdpname)
+
+        Target = os.path.join(self.working_dir, mdpname)
+
+        shutil.copy2(Source, Target)
 
     def add_ions(self):
         print(">STEP5 : Initiating Procedure to Add Ions & Neutralise the " \
@@ -300,7 +314,7 @@ class ProteinLigMin(object):
         grompp = settings.g_prefix + "grompp"
         step_no = "5"
         step_name = "Check Ions "
-        command = grompp + " -f " + self.working_dir + "em.mdp -c " + \
+        command = grompp + " -f " + self.working_dir + EM_MDP + " -c " + \
             self.working_dir + "solv.gro -p " + self.working_dir + \
             "topol.top -o " + self.working_dir + "ions.tpr -po " + \
             self.working_dir + "mdout.mdp > " + self.working_dir + \
@@ -354,51 +368,40 @@ class ProteinLigMin(object):
         elif charge == 0:
             print("System has Neutral charge , No adjustments Required :)")
             try:
-                self.file_copy('work/ions.tpr', "work/solv_ions.tpr")
+                shutil.copy('work/ions.tpr', "work/solv_ions.tpr")
             except FileNotFoundError:
                 pass
 
         print("DOUBLE CHEERS: SUCCESFULY PREPARED SYSTEM FOR SIMULATION")
 
     def create_em_mdp(self):
-        with open(self.working_dir + "em_real.mdp", "w") as f:
-            f.write(create_em_mdp_data)
-        print("CHEERS: em_real.mdp SUCCESSFULLY GENERATED :)")
+        self.load_mdp(EMW_MDP)
 
     def minimize(self):
-        print("MESSAGE: ")
-        t = input(
-            "Did you check your complex !! do you wish to continue: (y/n)")
+        print(">STEP7 : Preparing the files for Minimisation")
+        # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
+        # mdrun -v -deffnm em
+        grompp = settings.g_prefix + "grompp"
+        mdrun = settings.g_prefix + "mdrun"
+        step_no = "7"
+        step_name = "Prepare files for Minimisation"
+        # max warn 3 only for now
+        command = grompp + " -f " + self.working_dir + EMW_MDP + " -c " +\
+            self.working_dir + "solv_ions.gro -p " + self.working_dir\
+            + "topol.top -o " + self.working_dir + "em.tpr -po " +\
+            self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir\
+            + "step7.log 2>&1"
+        self.run_process(step_no, step_name, command)
 
-        if t == 'y':
+        step_no = "8"
+        step_name = " Minimisation"
 
-            print(">STEP7 : Preparing the files for Minimisation")
-            # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
-            # mdrun -v -deffnm em
-            grompp = settings.g_prefix + "grompp"
-            mdrun = settings.g_prefix + "mdrun"
-            step_no = "7"
-            step_name = "Prepare files for Minimisation"
-            # max warn 3 only for now
-            command = grompp + " -f " + self.working_dir + "em_real.mdp -c " +\
-                self.working_dir + "solv_ions.gro -p " + self.working_dir\
-                + "topol.top -o " + self.working_dir + "em.tpr -po " +\
-                self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir\
-                + "step7.log 2>&1"
-            self.run_process(step_no, step_name, command)
-
-            step_no = "8"
-            step_name = " Minimisation"
-
-            command = mdrun + " -v  -s " + self.working_dir + "em.tpr -c " + \
-                self.working_dir + "em.gro -o " + self.working_dir + \
-                "em.trr -e " + self.working_dir + "em.edr -x " + \
-                self.working_dir + "em.xtc -g " + self.working_dir + \
-                "em.log > " + self.working_dir + "step8.log 2>&1"
-            self.run_process(step_no, step_name, command)
-        else:
-            print("Exiting on user request ")
-            sys.exit()
+        command = mdrun + " -v  -s " + self.working_dir + "em.tpr -c " + \
+            self.working_dir + "em.gro -o " + self.working_dir + \
+            "em.trr -e " + self.working_dir + "em.edr -x " + \
+            self.working_dir + "em.xtc -g " + self.working_dir + \
+            "em.log > " + self.working_dir + "step8.log 2>&1"
+        self.run_process(step_no, step_name, command)
 
     def nvt(self):
         print(">STEP9 : Initiating the Procedure to Equiliberate the System")
@@ -408,10 +411,8 @@ class ProteinLigMin(object):
         step_no = "9"
         step_name = "Preparing files for NVT Equiliberation"
 
-        if not (os.path.isfile(self.working_dir + "nvt.mdp")):
-            nvtfile = open(self.working_dir + "nvt.mdp", 'w')
-            nvtfile.write(general_nvt_data)
-            nvtfile.close()
+        if not (os.path.isfile(self.working_dir + NVT_MDP)):
+            self.load_mdp(NVT_MDP)
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = grompp +\
@@ -447,9 +448,7 @@ class ProteinLigMin(object):
         step_name = "Preparing files for NPT Equiliberation"
 
         if not (os.path.isfile(self.working_dir + "npt.mdp")):
-            nptfile = open(self.working_dir + "npt.mdp", 'w')
-            nptfile.write(general_npt_data)
-            nptfile.close()
+            self.load_mdp("npt.mdp")
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = grompp +\
