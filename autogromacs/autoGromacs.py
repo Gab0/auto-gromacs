@@ -12,7 +12,7 @@ from .core.messages import welcome_message, backup_folder_already_exists, \
 from .core import settings
 
 
-bashlog = open('work/bashlog','w')
+bashlog = None 
 
 
 class ProteinLigMin(object):
@@ -525,6 +525,9 @@ def parse_arguments():
 def main():
     arguments = parse_arguments()
 
+    global bashlog
+    bashlog = open('work/bashlog','w')
+    
     # TODO: Think of a better name
     obj = ProteinLigMin(
         ligand_file=arguments.ligand,
