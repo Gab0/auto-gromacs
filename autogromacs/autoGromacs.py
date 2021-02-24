@@ -3,6 +3,7 @@ import shutil
 import argparse
 import sys
 import os
+import re
 import subprocess
 import shutil
 
@@ -44,6 +45,22 @@ class ProteinLigMin(object):
         if self.verbose is True and self.quiet is True:
             print('Can\'t use both the verbose and quiet flags together')
             sys.exit()
+
+    def toWD(self, f):
+        return os.path.join(self.working_dir, f)
+
+    def fix_includes(self, fpath):
+        with open(fpath) as f:
+            contents = f.read()
+
+        BASE = '#include "'
+        output = re.sub(
+            BASE + self.working_dir + "/*",
+            BASE,
+            contents
+        )
+        with open(fpath, 'w') as f:
+            f.write(output)
 
     @staticmethod
     def welcome():
@@ -144,14 +161,15 @@ class ProteinLigMin(object):
         ]
         LogFile = "%sstep1_%s.log" % (self.working_dir,TARGET)
 
-        POSRE_PATH = os.path.join(self.working_dir, "posre.itp")
+        POSRE_PATH = self.toWD("posre.itp")
+        TOPOL_PATH = self.toWD("topol.top")
         command = [
             pdb2gmx,
             "-f", "%s%s.pdb" % (self.working_dir, TARGET),
             "-o", "%s%s.gro" % (self.working_dir, TARGET),
-            #"-ignh",
-            #"-i", POSRE_PATH,
-            "-p", "%stopol.top" % self.working_dir,
+            "-ignh",
+            "-i", POSRE_PATH,
+            "-p", TOPOL_PATH,
             "-ff", FFs[1],
             "-water spce",
             ">> %s 2>&1" % LogFile
@@ -169,6 +187,8 @@ class ProteinLigMin(object):
             print("")
             print(READ_LOG[Z:K])
             return 1
+
+        self.fix_includes(TOPOL_PATH)
 
     # MAYBE THIS IS NOT NEEDED.
     def conjugateProteinLigand(self):
@@ -381,7 +401,7 @@ class ProteinLigMin(object):
             except FileNotFoundError:
                 pass
 
-        print("DOUBLE CHEERS: SUCCESFULY PREPARED SYSTEM FOR SIMULATION")
+        print("DOUBLE CHEERS: SUCCESSFULLY PREPARED SYSTEM FOR SIMULATION")
 
     def create_em_mdp(self):
         self.load_mdp(EMW_MDP)
@@ -413,29 +433,41 @@ class ProteinLigMin(object):
         self.run_process(step_no, step_name, command)
 
     def nvt(self):
-        print(">STEP9 : Initiating the Procedure to Equiliberate the System")
-        print("Beginging Equiliberation with NVT Ensemble")
+        print(">STEP9 : Initiating the Procedure to Equilibrate the System")
+        print("Beginging Equilibration with NVT Ensemble")
         grompp = settings.g_prefix + "grompp"
         mdrun = settings.g_prefix + "mdrun"
         step_no = "9"
-        step_name = "Preparing files for NVT Equiliberation"
+        step_name = "Preparing files for NVT Equilibration"
+
+        """
+        shutil.copy2(*[
+            os.path.join(self.working_dir, x)
+            for x in ["#posre.itp.1#", "posre.itp"]
+        ])
+        """
 
         if not (os.path.isfile(self.working_dir + NVT_MDP)):
             self.load_mdp(NVT_MDP)
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
-        command = grompp +\
-                  " -f " + self.working_dir + "nvt.mdp"+\
-                  " -c " + self.working_dir + "em.gro" +\
-                  " -p " + self.working_dir + "topol.top" +\
-                  " -o " + self.working_dir + "nvt.tpr" +\
-                  " -po " + self.working_dir + "mdout.mdp" +\
-                  " -maxwarn 3" +\
-                  " > " + self.working_dir + "step9.log 2>&1"
+        command = [
+            grompp,
+            "-f", self.working_dir + "nvt.mdp",
+            "-c", self.working_dir + "em.gro",
+            "-r", self.working_dir + "em.gro",
+            "-p", self.working_dir + "topol.top",
+            "-o", self.working_dir + "nvt.tpr",
+            "-po", self.working_dir + "mdout.mdp",
+            "-maxwarn 3",
+            ">", self.working_dir + "step9.log 2>&1"
+        ]
+        command = " ".join(command)
+
         self.run_process(step_no, step_name, command)
 
         step_no = "10"
-        step_name = "NVT Equiliberation"
+        step_name = "NVT Equilibration"
         command = mdrun + " -v"+\
                   " -s " + self.working_dir + "nvt.tpr"+\
                   " -c " + self.working_dir + "nvt.gro"+\
@@ -449,12 +481,12 @@ class ProteinLigMin(object):
         self.run_process(step_no, step_name, command)
 
     def npt(self):
-        print(">STEP11 : Initiating the Procedure to Equiliberate the System")
-        print("Beginging Equiliberation with NPT Ensemble")
+        print(">STEP11 : Initiating the Procedure to Equilibrate the System")
+        print("Beginging Equilibration with NPT Ensemble")
         grompp = settings.g_prefix + "grompp"
         mdrun = settings.g_prefix + "mdrun"
         step_no = "11"
-        step_name = "Preparing files for NPT Equiliberation"
+        step_name = "Preparing files for NPT Equilibration"
 
         if not (os.path.isfile(self.working_dir + "npt.mdp")):
             self.load_mdp("npt.mdp")
@@ -471,7 +503,7 @@ class ProteinLigMin(object):
         self.run_process(step_no, step_name, command)
 
         step_no = "12"
-        step_name = "NPT Equiliberation"
+        step_name = "NPT Equilibration"
         command = mdrun + " -v  -s " + self.working_dir + "npt.tpr -c " + \
             self.working_dir + "npt.gro -o " + self.working_dir + \
             "npt.trr -e " + self.working_dir + "npt.edr -x " + \
@@ -485,7 +517,7 @@ class ProteinLigMin(object):
         grompp = settings.g_prefix + "grompp"
         mdrun = settings.g_prefix + "mdrun"
         step_no = "13"
-        step_name = "Preparing files for NPT Equiliberation"
+        step_name = "Preparing files for NPT Equilibration"
 
         if not (os.path.isfile(self.working_dir + "md.mdp")):
             mdfile = open(self.working_dir + "md.mdp", 'w')
