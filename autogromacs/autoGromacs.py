@@ -314,12 +314,17 @@ class ProteinLigMin(object):
         grompp = settings.g_prefix + "grompp"
         step_no = "5"
         step_name = "Check Ions "
-        command = grompp + " -f " + self.working_dir + EM_MDP + " -c " + \
-            self.working_dir + "solv.gro -p " + self.working_dir + \
-            "topol.top -o " + self.working_dir + "ions.tpr -po " + \
-            self.working_dir + "mdout.mdp > " + self.working_dir + \
-            "step5.log 2>&1"
-
+        command = [
+            grompp,
+            "-f", self.working_dir + EM_MDP,
+            "-c", self.working_dir + "solv.gro",
+            "-p", self.working_dir + "topol.top",
+            "-o", self.working_dir + "ions.tpr",
+            "-po", self.working_dir + "mdout.mdp",
+            " > " + self.working_dir + "step5.log",
+            "2>&1"
+        ]
+        command = " ".join(command)
         self.run_process(step_no, step_name, command)
 
         # calculating the charge of the system
@@ -359,12 +364,16 @@ class ProteinLigMin(object):
             genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Positive Ions "
-            command = genion + " -s " + self.working_dir + "ions.tpr -o " + \
-                self.working_dir + "solv_ions.gro -p " + self.working_dir + \
-                "topol.top -pname NA -np " + str(-charge) +\
-                " << EOF\nSOL\nEOF"
+            command = [
+                genion,
+                "-s" + self.working_dir + "ions.tpr",
+                "-o" + self.working_dir + "solv_ions.gro",
+                "-p", self.working_dir + "topol.top -pname NA -np",
+                str(-charge),
+                "<< EOF\nSOL\nEOF"
+                ]
+            command = " ".join(command)
             self.run_process(step_no, step_name, command)
-
         elif charge == 0:
             print("System has Neutral charge , No adjustments Required :)")
             try:
