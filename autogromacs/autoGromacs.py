@@ -495,6 +495,7 @@ class ProteinLigMin(object):
         command = grompp +\
                   " -f " + self.working_dir + "npt.mdp"+\
                   " -c " + self.working_dir + "nvt.gro" +\
+                  " -r " + self.working_dir + "nvt.gro" +\
                   " -p " + self.working_dir + "topol.top" +\
                   " -o " + self.working_dir + "npt.tpr" +\
                   " -po "+ self.working_dir + "mdout.mdp" +\
