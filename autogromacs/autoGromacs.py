@@ -34,7 +34,7 @@ def handle_error(ERROR, step_no, log_file=None):
             sys.exit(ERROR)
         else:
             print("\n")
-            print("HEADS UP: Command failed with return code %i" % ERROR)
+            print("HEADS UP: Command failed for step %s: return code %i." % (step_no, ERROR))
             sys.exit(ERROR)
 
 
