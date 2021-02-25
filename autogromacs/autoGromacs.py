@@ -593,9 +593,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def main():
-    arguments = parse_arguments()
-
+def run_pipeline(arguments):
 
     # TODO: Think of a better name
     obj = ProteinLigMin(
@@ -632,6 +630,10 @@ def main():
         else:
             STEP()
 
+
+def main():
+    arguments = parse_arguments()
+    run_pipeline(arguments)
 
 
 if __name__ == "__main__":
