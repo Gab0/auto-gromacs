@@ -101,6 +101,10 @@ class ProteinLigMin(object):
     def run_process(step_no, step_name, command, log_file=None):
         print("INFO: Attempting to execute " + step_name + \
               " [STEP:" + step_no + "]")
+
+        if ">" not in command and log_file is not None:
+            command += f">> {log_file} 2>&1"
+
         ret = subprocess.call(command, shell=True)
         bashlog.write("%s\n" % command)
         handle_error(ret, step_no, log_file)
@@ -184,17 +188,16 @@ class ProteinLigMin(object):
             "-i", POSRE_PATH,
             "-p", TOPOL_PATH,
             "-ff", arguments.FF,
-            "-water spce",
-            ">> %s 2>&1" % log_file
+            "-water spce"
         ]
 
         #assert(os.path.isfile(POSRE_PATH))
         command = " ".join(command)
-        ERROR = self.run_process(step_no, step_name, command)
+        self.run_process(step_no, step_name, command, log_file)
 
-        # ERROR HANDLING:
-
-
+        # FIX TOPOLOGY INCLUDE PATHS
+        # Gromacs won't consider we're creating files in another folder
+        # When processing 'includes' for topology files.
         self.fix_includes(TOPOL_PATH)
 
     # MAYBE THIS IS NOT NEEDED.
