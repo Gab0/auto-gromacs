@@ -19,6 +19,25 @@ EMW_MDP = "ions.mdp"
 NVT_MDP = "nvt.mdp"
 
 
+def handle_error(ERROR, step_no, log_file=None):
+    if ERROR == 0:
+        print('STEP%s Completed!' %  step_no)
+        print("")
+        return
+    else:
+        if log_file is not None:
+            READ_LOG = open(log_file).read()
+            print(READ_LOG)
+
+        if ERROR < 0:
+            print("HEADS UP: Killed by signal :(", -ERROR)
+            sys.exit(ERROR)
+        else:
+            print("\n")
+            print("HEADS UP: Command failed with return code %i" % ERROR)
+            sys.exit(ERROR)
+
+
 class ProteinLigMin(object):
     def __init__(self, *args, **kwargs):
         self.protein_file_path = kwargs.pop('protein_file')
@@ -62,6 +81,9 @@ class ProteinLigMin(object):
         with open(fpath, 'w') as f:
             f.write(output)
 
+    def makeLogPath(self, n):
+        return self.toWD(f"step{n}.log")
+
     @staticmethod
     def welcome():
         """
@@ -76,22 +98,12 @@ class ProteinLigMin(object):
         pass
 
     @staticmethod
-    def run_process(step_no, step_name, command):
+    def run_process(step_no, step_name, command, log_file=None):
         print("INFO: Attempting to execute " + step_name + \
               " [STEP:" + step_no + "]")
         ret = subprocess.call(command, shell=True)
         bashlog.write("%s\n" % command)
-        if ret != 0:
-            if ret < 0:
-                print("HEADS UP: Killed by signal :(", -ret)
-                sys.exit(ret)
-            else:
-                print("HEADS UP: Command failed with return code", ret)
-                sys.exit(ret)
-
-        else:
-            print('STEP%s Completed!' %  step_no)
-            print("")
+        handle_error(ret, step_no, log_file)
 
     def gather_files(self):
         if self.ligand_file_path and not os.path.isfile(self.ligand_file_path):
@@ -136,18 +148,18 @@ class ProteinLigMin(object):
         #shutil.copy2(self.ligand_topology_file_path,
         #             self.working_dir + 'ligand.itp')
 
-    def pdb2gmx_coord(self):
-        if self.pdb2gmx_proc("protein"):
+    def pdb2gmx_coord(self, arguments):
+        if self.pdb2gmx_proc(arguments, "protein"):
             return 1
         if self.ligand_file_path:
-            if self.pdb2gmx_proc("ligand"):
+            if self.pdb2gmx_proc(arguments, "ligand"):
                 return 1
-            if self.prepare_system():
-                return 1
+            return self.prepare_system()
+
 
         return 0
 
-    def pdb2gmx_proc(self, TARGET):
+    def pdb2gmx_proc(self, arguments, TARGET):
         assert (TARGET in ["protein", "ligand"])
 
         print("-> STEP 1: Initiating Procedure to generate topology for %s." % TARGET)
@@ -159,7 +171,8 @@ class ProteinLigMin(object):
             "gromos54a7",
             "amber03"
         ]
-        LogFile = "%sstep1_%s.log" % (self.working_dir,TARGET)
+
+        log_file = "%sstep1_%s.log" % (self.working_dir,TARGET)
 
         POSRE_PATH = self.toWD("posre.itp")
         TOPOL_PATH = self.toWD("topol.top")
@@ -170,9 +183,9 @@ class ProteinLigMin(object):
             "-ignh",
             "-i", POSRE_PATH,
             "-p", TOPOL_PATH,
-            "-ff", FFs[1],
+            "-ff", arguments.FF,
             "-water spce",
-            ">> %s 2>&1" % LogFile
+            ">> %s 2>&1" % log_file
         ]
 
         #assert(os.path.isfile(POSRE_PATH))
@@ -180,13 +193,7 @@ class ProteinLigMin(object):
         ERROR = self.run_process(step_no, step_name, command)
 
         # ERROR HANDLING:
-        if ERROR:
-            READ_LOG = open(LogFile).read()
-            Z = READ_LOG.find('Fatal error')
-            K = READ_LOG.find('----', Z)
-            print("")
-            print(READ_LOG[Z:K])
-            return 1
+
 
         self.fix_includes(TOPOL_PATH)
 
@@ -228,7 +235,7 @@ class ProteinLigMin(object):
         ligand_file = open(ligand, "r")
 
         system_file.write(
-            "System.gro Designed for Simulation by [bngromacs.py]\n")
+            "System.gro Designed by autogromacs\n")
         system_file.write(str(system_count) + "\n")
 
         line_counter = 1
@@ -247,7 +254,7 @@ class ProteinLigMin(object):
                 system_file.write(line)
             line_counter += 1
 
-            # get the last line of protein [the coordinates of the center]
+        # get the last line of protein [the coordinates of the center]
         protein_file = open(protein, "r")
         last_line = protein_file.readlines()[-1]
         # print last_line
@@ -256,18 +263,21 @@ class ProteinLigMin(object):
 
         f1 = open(self.working_dir + 'topol.top', 'r')
         f2 = open(self.working_dir + 'topol_temp.top', 'w')
-        """for line in f1:
+        """
+        for line in f1:
             f2.write(line.replace('; Include water topology',
                                   '; Include Ligand topology\n #include '
                                   '" ' + self.working_dir + 'ligand.itp"\n\n\n; Include water topology ')
                      )"""
         f1.close()
         f2.close()
+
         # swaping the files to get the original file
         f1 = open(self.working_dir + 'topol.top', 'w')
         f2 = open(self.working_dir + 'topol_temp.top', 'r')
         for line in f2:
             f1.write(line)
+
         #f1.write("UNK        1\n")
         f1.close()
         f2.close()
@@ -283,14 +293,21 @@ class ProteinLigMin(object):
         editconf = settings.g_prefix + "editconf"
         step_no = "3"
         step_name = "Defining the Box"
+
+        log_file = self.makeLogPath(step_no)
+
         # -f system.gro
-        command = [editconf,
-                   "-f", self.working_dir + "protein.gro",
-                   "-o", self.working_dir + "newbox.gro",
-                   "-bt", "cubic",
-                   "-d", "1",
-                   "-c >>", self.working_dir + "step3.log 2>&1"]
-        self.run_process(step_no, step_name, " ".join(command))
+        command = [
+            editconf,
+            "-f", self.working_dir + "protein.gro",
+            "-o", self.working_dir + "newbox.gro",
+            "-bt", "cubic",
+            "-d", "1",
+            "-c >>", log_file + " 2>&1"
+        ]
+
+
+        self.run_process(step_no, step_name, " ".join(command), log_file)
 
         print(">STEP4 : Initiating Procedure to Solvate Complex")
         genbox = settings.g_prefix + "genbox"
@@ -334,6 +351,9 @@ class ProteinLigMin(object):
         grompp = settings.g_prefix + "grompp"
         step_no = "5"
         step_name = "Check Ions "
+
+        log_file = self.makeLogPath(step_no)
+
         command = [
             grompp,
             "-f", self.working_dir + EM_MDP,
@@ -341,11 +361,11 @@ class ProteinLigMin(object):
             "-p", self.working_dir + "topol.top",
             "-o", self.working_dir + "ions.tpr",
             "-po", self.working_dir + "mdout.mdp",
-            " > " + self.working_dir + "step5.log",
+            ">", log_file,
             "2>&1"
         ]
         command = " ".join(command)
-        self.run_process(step_no, step_name, command)
+        self.run_process(step_no, step_name, command, log_file)
 
         # calculating the charge of the system
         # TODO: What is this doing? word??? Better name!
@@ -564,6 +584,9 @@ def parse_arguments():
     parser.add_argument('-q', '--quiet', help='Be very quit',
                         action="store_true")
 
+    parser.add_argument('--force-field', dest="FF",
+                        default="amber03", help="Gromacs force field to use.")
+
     return parser.parse_args()
 
 
@@ -599,8 +622,13 @@ def main():
         ]
 
     for STEP in STEPS:
-        if STEP():
-            exit()
+        W = 'arguments' in STEP.__code__.co_varnames
+
+        if W:
+            STEP(arguments)
+        else:
+            STEP()
+
 
 
 if __name__ == "__main__":
