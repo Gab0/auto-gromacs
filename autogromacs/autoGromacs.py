@@ -102,11 +102,13 @@ class ProteinLigMin(object):
         print("INFO: Attempting to execute " + step_name + \
               " [STEP:" + step_no + "]")
 
+        # Assure logging is enabled;
         if ">" not in command and log_file is not None:
             command += f">> {log_file} 2>&1"
 
-        ret = subprocess.call(command, shell=True)
         bashlog.write("%s\n" % command)
+        ret = subprocess.call(command, shell=True)
+
         handle_error(ret, step_no, log_file)
 
     def gather_files(self):
@@ -306,7 +308,7 @@ class ProteinLigMin(object):
             "-o", self.working_dir + "newbox.gro",
             "-bt", "cubic",
             "-d", "1",
-            "-c >>", log_file + " 2>&1"
+            "-c"
         ]
 
 
@@ -562,8 +564,13 @@ class ProteinLigMin(object):
         step_no = "14"
         step_name = "Creating producion MD."
         command = mdrun +\
-                  " -v  -s " + self.working_dir + "md.tpr"+\
-                  " -c " + self.working_dir + "md.gro -o " + self.working_dir + "md.trr -e " +\
+                  " -v  -s " + \
+                  self.working_dir + "md.tpr"+ \
+                  " -c " + \
+                  self.working_dir + \
+                  "md.gro -o " + \
+                  self.working_dir + \
+                  "md.trr -e " + \
             self.working_dir + "md.edr -x " + self.working_dir + "md.xtc -g " +\
             self.working_dir + "md.log -nb gpu > " + self.working_dir + \
             "step14.log 2>&1"
@@ -590,6 +597,7 @@ def parse_arguments():
     parser.add_argument('--force-field', dest="FF",
                         default="amber03", help="Gromacs force field to use.")
 
+    parser.add_argument('--runmd', action="store_false", default=True)
     return parser.parse_args()
 
 
@@ -616,15 +624,19 @@ def run_pipeline(arguments):
         obj.add_ions,
         obj.create_em_mdp,
         obj.minimize,
+    ]
+    if arguments.runmd:
+        STEPS += [
         # evaluation steps;
         obj.nvt,
-        obj.npt,
-        obj.md
+        obj.npt
         ]
+
+    if arguments.runmd:
+        STEPS.append(obj.md)
 
     for STEP in STEPS:
         W = 'arguments' in STEP.__code__.co_varnames
-
         if W:
             STEP(arguments)
         else:

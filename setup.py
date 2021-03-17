@@ -15,7 +15,8 @@ setup(
     license="MIT",
     entry_points={
         'console_scripts': [
-            "autogromacs=autogromacs.autoGromacs:main"
+            "autogromacs=autogromacs.autoGromacs:main",
+            "gromacstester=autogromacs.forceFieldCompatTester:main"
         ]
     },
 	package_data={
