@@ -1,5 +1,6 @@
 
 import os
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -17,18 +18,19 @@ ForceFields = [
     "gromos54a7"
 ]
 
+ForceFields = ["amber03"]
+
 
 class AutoGromacsArgs():
     itp = None
     ligand = None
     verbose = False
     quiet = True
-    runmd = False
 
-    def __init__(self, p, ff, w="work/"):
+    def __init__(self, p, ff, runmd=False, w="work/"):
         self.protein = p
         self.FF = ff
-
+        self.runmd = runmd
         self.wdir = w
 
 
@@ -38,11 +40,16 @@ def read_directory():
             yield F
 
 
-def execute(Files):
+def execute(arguments, Files):
     results = np.zeros(shape=(len(Files), len(ForceFields)))
     for i, File in enumerate(Files):
         for f, FF in enumerate(ForceFields):
-            arguments = AutoGromacsArgs(File, FF, w=f"work_{i + 1}_{f + 1}/")
+            arguments = AutoGromacsArgs(
+                File,
+                FF,
+                runmd=arguments.runmd,
+                w=f"work_{i + 1}_{f + 1}/"
+            )
 
             w = Process(target=autoGromacs.run_pipeline, args=(arguments,))
             w.start()
@@ -52,7 +59,16 @@ def execute(Files):
     return results
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--runmd', action="store_true", default=False)
+
+    return parser.parse_args()
+
+
 def main():
+    arguments = parse_arguments()
+
     Files = list(read_directory())
 
     print("Files loaded:")
@@ -63,8 +79,12 @@ def main():
     print()
     input("OK?")
 
-    results = execute(Files)
+    results = execute(arguments, Files)
 
+    show_results(results)
+
+
+def show_results(results):
     print(results)
 
     fig, ax = plt.subplots()
@@ -76,7 +96,8 @@ def main():
     # ... and label them with the respective list entries
     ax.set_yticklabels(Files)
     ax.set_xticklabels(ForceFields)
-    plt.show()
+
+    plt.savefig("results.png")
 
 
 if __name__ == "__main__":

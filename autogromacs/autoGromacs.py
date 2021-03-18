@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import shutil
+import datetime
 
 from .core.messages import welcome_message, backup_folder_already_exists,\
     general_nvt_data,  general_md_data
@@ -422,7 +423,7 @@ class ProteinLigMin(object):
         elif charge == 0:
             print("System has Neutral charge , No adjustments Required :)")
             try:
-                shutil.copy('work/ions.tpr', "work/solv_ions.tpr")
+                shutil.copy(self.working_dir + 'ions.tpr', self.working_dir + "solv_ions.tpr")
             except FileNotFoundError:
                 pass
 
@@ -500,7 +501,7 @@ class ProteinLigMin(object):
                   " -e " + self.working_dir + "nvt.edr"+\
                   " -x " + self.working_dir + "nvt.xtc"+\
                   " -g " + self.working_dir + "nvt.log"+\
-                  " -deffnm work/nvt"+\
+                  " -deffnm " + self.working_dir + "nvt"+\
                   " > " + self.working_dir + "step10.log 2>&1"
         # command = "gmx mdrun -deffnm nvt > step10.log 2>&1"
         self.run_process(step_no, step_name, command)
@@ -572,9 +573,10 @@ class ProteinLigMin(object):
                   self.working_dir + \
                   "md.trr -e " + \
             self.working_dir + "md.edr -x " + self.working_dir + "md.xtc -g " +\
-            self.working_dir + "md.log -nb gpu > " + self.working_dir + \
-            "step14.log 2>&1"
-        self.run_process(step_no, step_name, command)
+            self.working_dir + "md.log"
+
+        log_file = self.makeLogPath(step_no)
+        self.run_process(step_no, step_name, command, log_file)
 
 
 def parse_arguments():
@@ -636,6 +638,8 @@ def run_pipeline(arguments):
         STEPS.append(obj.md)
 
     for STEP in STEPS:
+        now = datetime.datetime.now().strftime("%H:%M:%S")
+        print(f"\n\t[{now}]")
         W = 'arguments' in STEP.__code__.co_varnames
         if W:
             STEP(arguments)
