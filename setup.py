@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name='autogromacs',
-    version='0.1',
+    version='0.2',
     packages=[
         'autogromacs.core',
         'autogromacs'
@@ -16,7 +16,8 @@ setup(
     entry_points={
         'console_scripts': [
             "autogromacs=autogromacs.autoGromacs:main",
-            "gromacstester=autogromacs.forceFieldCompatTester:main"
+            "gromacstester=autogromacs.forceFieldCompatTester:main",
+            "mdanalyze=autogromacs.mdanalysis:main"
         ]
     },
 	package_data={

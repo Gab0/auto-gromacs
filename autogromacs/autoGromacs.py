@@ -8,8 +8,7 @@ import subprocess
 import shutil
 import datetime
 
-from .core.messages import welcome_message, backup_folder_already_exists,\
-    general_nvt_data,  general_md_data
+from .core.messages import welcome_message, backup_folder_already_exists
 from .core import settings
 
 
@@ -538,18 +537,15 @@ class ProteinLigMin(object):
             + self.working_dir + "step12.log 2>&1"
         self.run_process(step_no, step_name, command)
 
-    def md(self):
+    def initmd(self):
         print("CHEERS :) WE ARE CLOSE TO SUCCESS :):)")
         print(">STEP13 : Initiating the Production Run")
         grompp = settings.g_prefix + "grompp"
-        mdrun = settings.g_prefix + "mdrun"
         step_no = "13"
         step_name = "Preparing files for NPT Equilibration"
 
         if not (os.path.isfile(self.working_dir + "md.mdp")):
-            mdfile = open(self.working_dir + "md.mdp", 'w')
-            mdfile.write(general_md_data)
-            mdfile.close()
+            self.load_mdp("md.mdp")
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = grompp +\
@@ -558,10 +554,11 @@ class ProteinLigMin(object):
                   " -p " + self.working_dir + "topol.top" +\
                   " -o " + self.working_dir + "md.tpr" +\
                   " -po "+ self.working_dir + "mdout.mdp" +\
-                  " -maxwarn 3" +\
-                  " > " + self.working_dir + "step13.log 2>&1"
-        self.run_process(step_no, step_name, command)
+                  " -maxwarn 3 "
+        self.run_process(step_no, step_name, command, self.makeLogPath(step_no))
 
+    def md(self):
+        mdrun = settings.g_prefix + "mdrun"
         step_no = "14"
         step_name = "Creating producion MD."
         command = mdrun +\
@@ -579,6 +576,20 @@ class ProteinLigMin(object):
         self.run_process(step_no, step_name, command, log_file)
 
 
+    def continue_mdrun(self):
+        critical_file = self.makeLogPath(14)
+
+        if os.path.isfile(critical_file):
+            with open(critical_file) as f:
+                content = f.read()
+                CMD = re.findall("gmx [ \-\d\w/\.]+", content)
+                chosen = sorted(CMD, key=len, reverse=True)[0]
+                print(CMD)
+                print(chosen)
+
+        else:
+            print(f"RESUME {critical_file} FILE NOT FOUND.")
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -590,7 +601,7 @@ def parse_arguments():
                         help='Input a protein file (default:protein.pdb)')
     parser.add_argument('-w', '--wdir',
                         help='Working Directory of project (default:work)',
-                        default='work/')
+                        default='work')
     parser.add_argument('-v', '--verbose', help='Loud and Noisy[default]',
                         action="store_true")
     parser.add_argument('-q', '--quiet', help='Be very quit',
@@ -599,7 +610,12 @@ def parse_arguments():
     parser.add_argument('--force-field', dest="FF",
                         default="amber03", help="Gromacs force field to use.")
 
-    parser.add_argument('--runmd', action="store_false", default=True)
+    parser.add_argument('--norunmd', dest="runmd",
+                        action="store_false", default=True)
+
+    parser.add_argument('--resume',
+                        action="store_true")
+
     return parser.parse_args()
 
 
@@ -614,6 +630,11 @@ def run_pipeline(arguments):
         verbose=arguments.verbose,
         quiet=arguments.quiet
     )
+    if arguments.resume:
+        print("RESUMING")
+        obj.continue_mdrun()
+        sys.exit(1)
+
     obj.welcome()
     obj.gather_files()
 
@@ -627,15 +648,16 @@ def run_pipeline(arguments):
         obj.create_em_mdp,
         obj.minimize,
     ]
-    if arguments.runmd:
-        STEPS += [
-        # evaluation steps;
-        obj.nvt,
-        obj.npt
-        ]
 
     if arguments.runmd:
-        STEPS.append(obj.md)
+        STEPS += [
+            # evaluation steps;
+            obj.nvt,
+            obj.npt,
+            obj.initmd,
+            obj.md
+        ]
+
 
     for STEP in STEPS:
         now = datetime.datetime.now().strftime("%H:%M:%S")
@@ -649,6 +671,11 @@ def run_pipeline(arguments):
 
 def main():
     arguments = parse_arguments()
+
+    # FIXME: well...
+    if arguments.wdir[-1] != "/":
+        arguments.wdir += "/"
+
     run_pipeline(arguments)
 
 

@@ -10,23 +10,24 @@ from multiprocessing import Process, Pipe
 
 ForceFields = [
     "amber03",
+    "amber12sb",
+    "amber14sb",
     "amber99",
     "amber96",
     "amber94",
     "charmm27",
     "gromos53a5",
-    "gromos54a7"
+    "gromos54a7",
 ]
 
-ForceFields = ["amber03"]
-
+ForceFields = ForceFields[:3]
 
 class AutoGromacsArgs():
     itp = None
     ligand = None
     verbose = False
     quiet = True
-
+    resume = False
     def __init__(self, p, ff, runmd=False, w="work/"):
         self.protein = p
         self.FF = ff
@@ -81,10 +82,10 @@ def main():
 
     results = execute(arguments, Files)
 
-    show_results(results)
+    show_results(results, Files, ForceFields)
 
 
-def show_results(results):
+def show_results(results, Files, ForceFields):
     print(results)
 
     fig, ax = plt.subplots()
