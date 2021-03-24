@@ -557,21 +557,29 @@ class ProteinLigMin(object):
                   " -maxwarn 3 "
         self.run_process(step_no, step_name, command, self.makeLogPath(step_no))
 
-    def md(self):
+    def md(self, arguments):
         mdrun = settings.g_prefix + "mdrun"
         step_no = "14"
         step_name = "Creating producion MD."
-        command = mdrun +\
-                  " -v  -s " + \
-                  self.working_dir + "md.tpr"+ \
-                  " -c " + \
-                  self.working_dir + \
-                  "md.gro -o " + \
-                  self.working_dir + \
-                  "md.trr -e " + \
-            self.working_dir + "md.edr -x " + self.working_dir + "md.xtc -g " +\
-            self.working_dir + "md.log"
+        command = [
+            mdrun, "-v",
+            "-s", self.working_dir + "md.tpr",
+            "-c", self.working_dir + "md.gro",
+            "-o", self.working_dir + "md.trr",
+            "-e", self.working_dir + "md.edr",
+            "-x", self.working_dir + "md.xtc",
+            "-g", self.working_dir + "md.log",
+            "-cpo", self.working_dir + "state.cpt"
+        ]
 
+        if arguments.gpu:
+            command += [
+                "-pme", "gpu",
+                "-pmefft", "gpu",
+                "-bonded", "gpu",
+                #"-update", "gpu"
+            ]
+        command = " ".join(command)
         log_file = self.makeLogPath(step_no)
         self.run_process(step_no, step_name, command, log_file)
 
@@ -615,6 +623,10 @@ def parse_arguments():
 
     parser.add_argument('--resume',
                         action="store_true")
+
+    parser.add_argument('--gpu',
+                        action="store_true",
+                        help="Use GPU on MD steps. Requres GROMACS compiled with GPU support.")
 
     return parser.parse_args()
 
