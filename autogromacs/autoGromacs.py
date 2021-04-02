@@ -38,35 +38,39 @@ def handle_error(ERROR, step_no, log_file=None):
             sys.exit(ERROR)
 
 
-class ProteinLigMin(object):
-    def __init__(self, *args, **kwargs):
-        self.protein_file_path = kwargs.pop('protein_file')
-        if not self.protein_file_path:
-            exit()
+class GromacsSimulation(object):
+    def __init__(self, arguments):
+        self.protein_file_path = arguments.protein
+        if not self.protein_file_path and not arguments.resume:
+            print("No input protein specified.")
+            sys.exit(1)
 
-        self.ligand_file_path = kwargs.pop('ligand_file')
+        self.ligand_file_path = arguments.ligand
         if not self.ligand_file_path:
             pass
             #self.ligand_file_path = self.protein_file_path.split('.')[0] + '.gro'
 
-        self.ligand_topology_file_path = kwargs.pop('ligand_topology_file')
+        self.ligand_topology_file_path = arguments.ligand_topology
         if not self.ligand_topology_file_path:
             self.ligand_topology_file_path = 'posre.itp'
 
-        self.working_dir = kwargs.pop('working_dir')
+        self.working_dir = arguments.working_dir
 
         self.module_dir = os.path.dirname(__file__)
 
-        self.verbose = kwargs.pop('verbose')
-        self.quiet = kwargs.pop('quiet')
+        self.verbose = arguments.verbose
+        self.quiet = arguments.quiet
 
         # A user cant use both the verbose and the quiet flag together
         if self.verbose is True and self.quiet is True:
             print('Can\'t use both the verbose and quiet flags together')
             sys.exit()
 
-    def toWD(self, f):
+    def to_wd(self, f):
         return os.path.join(self.working_dir, f)
+
+    def path_state_file(self):
+        return self.to_wd("md.cpt")
 
     def fix_includes(self, fpath):
         with open(fpath) as f:
@@ -81,8 +85,8 @@ class ProteinLigMin(object):
         with open(fpath, 'w') as f:
             f.write(output)
 
-    def makeLogPath(self, n):
-        return self.toWD(f"step{n}.log")
+    def path_log(self, n):
+        return self.to_wd(f"step{n}.log")
 
     @staticmethod
     def welcome():
@@ -106,7 +110,9 @@ class ProteinLigMin(object):
         if ">" not in command and log_file is not None:
             command += f">> {log_file} 2>&1"
 
-        bashlog.write("%s\n" % command)
+        if bashlog is not None:
+            bashlog.write("%s\n" % command)
+
         ret = subprocess.call(command, shell=True)
 
         handle_error(ret, step_no, log_file)
@@ -180,8 +186,8 @@ class ProteinLigMin(object):
 
         log_file = "%sstep1_%s.log" % (self.working_dir,TARGET)
 
-        POSRE_PATH = self.toWD("posre.itp")
-        TOPOL_PATH = self.toWD("topol.top")
+        POSRE_PATH = self.to_wd("posre.itp")
+        TOPOL_PATH = self.to_wd("topol.top")
         command = [
             pdb2gmx,
             "-f", "%s%s.pdb" % (self.working_dir, TARGET),
@@ -299,7 +305,7 @@ class ProteinLigMin(object):
         step_no = "3"
         step_name = "Defining the Box"
 
-        log_file = self.makeLogPath(step_no)
+        log_file = self.path_log(step_no)
 
         # -f system.gro
         command = [
@@ -357,7 +363,7 @@ class ProteinLigMin(object):
         step_no = "5"
         step_name = "Check Ions "
 
-        log_file = self.makeLogPath(step_no)
+        log_file = self.path_log(step_no)
 
         command = [
             grompp,
@@ -401,6 +407,7 @@ class ProteinLigMin(object):
                 "topol.top -nname CL -nn " + str(charge) + " >> " + \
                 self.working_dir + "step6.log 2>&1"+\
                 " << EOF\nSOL\nEOF"
+
             self.run_process(step_no, step_name, command)
 
         elif charge < 0:
@@ -411,8 +418,8 @@ class ProteinLigMin(object):
             step_name = "Adding Positive Ions "
             command = [
                 genion,
-                "-s" + self.working_dir + "ions.tpr",
-                "-o" + self.working_dir + "solv_ions.gro",
+                "-s", self.working_dir + "ions.tpr",
+                "-o", self.working_dir + "solv_ions.gro",
                 "-p", self.working_dir + "topol.top -pname NA -np",
                 str(-charge),
                 "<< EOF\nSOL\nEOF"
@@ -538,7 +545,6 @@ class ProteinLigMin(object):
         self.run_process(step_no, step_name, command)
 
     def initmd(self):
-        print("CHEERS :) WE ARE CLOSE TO SUCCESS :):)")
         print(">STEP13 : Initiating the Production Run")
         grompp = settings.g_prefix + "grompp"
         step_no = "13"
@@ -555,13 +561,12 @@ class ProteinLigMin(object):
                   " -o " + self.working_dir + "md.tpr" +\
                   " -po "+ self.working_dir + "mdout.mdp" +\
                   " -maxwarn 3 "
-        self.run_process(step_no, step_name, command, self.makeLogPath(step_no))
+        self.run_process(step_no, step_name, command, self.path_log(step_no))
 
-    def md(self, arguments):
+
+    def base_mdrun(self):
         mdrun = settings.g_prefix + "mdrun"
-        step_no = "14"
-        step_name = "Creating producion MD."
-        command = [
+        return [
             mdrun, "-v",
             "-s", self.working_dir + "md.tpr",
             "-c", self.working_dir + "md.gro",
@@ -569,9 +574,17 @@ class ProteinLigMin(object):
             "-e", self.working_dir + "md.edr",
             "-x", self.working_dir + "md.xtc",
             "-g", self.working_dir + "md.log",
-            "-cpo", self.working_dir + "state.cpt"
         ]
 
+
+    def md(self, arguments):
+        print(">STEP14: Simulation stared for %s" % self.protein_file_path)
+        step_no = "14"
+        step_name = "Creating producion MD."
+
+
+
+        command = self.base_mdrun() + ["-cpo", self.path_state_file()]
         if arguments.gpu:
             command += [
                 "-pme", "gpu",
@@ -579,35 +592,72 @@ class ProteinLigMin(object):
                 "-bonded", "gpu",
                 #"-update", "gpu"
             ]
+
         command = " ".join(command)
-        log_file = self.makeLogPath(step_no)
+        log_file = self.path_log(step_no)
         self.run_process(step_no, step_name, command, log_file)
 
 
-    def continue_mdrun(self):
-        critical_file = self.makeLogPath(14)
+    def continue_mdrun(self, arguments):
+        critical_file = self.path_state_file()
+        simulation_log = self.path_log("14")
 
-        if os.path.isfile(critical_file):
-            with open(critical_file) as f:
-                content = f.read()
-                CMD = re.findall("gmx [ \-\d\w/\.]+", content)
-                chosen = sorted(CMD, key=len, reverse=True)[0]
-                print(CMD)
-                print(chosen)
+        grompp = settings.g_prefix + "grompp"
+        step_no = "15"
+        log_file = self.path_log(step_no)
 
-        else:
+        if arguments.refresh_mdp:
+            self.load_mdp("md.mdp")
+            GP = [
+                grompp,
+                "-f", self.to_wd("md.mdp"),
+                "-c", self.to_wd("md.tpr"),
+                "-p", self.to_wd("topol.top"),
+                "-t", self.path_state_file()
+            ]
+
+            step_no = "15.1"
+            self.run_process(step_no, "Update simulation", " ".join(GP), self.path_log(step_no))
+
+        if not os.path.isfile(critical_file):
             print(f"RESUME {critical_file} FILE NOT FOUND.")
+            return None
+
+
+        command = self.base_mdrun() + [
+            "-cpi", critical_file,
+            "-append"
+        ]
+
+        with open(simulation_log) as f:
+            content = f.read()
+            CMD = re.findall("gmx [ \-\d\w/\.]+", content)
+
+        chosen = sorted(CMD, key=len, reverse=True)[0]
+        print(CMD)
+        print(chosen)
+
+        CMD = chosen.split(" ") + command
+        command = " ".join(command)
+        self.run_process(
+            "15",
+            "Resume simulation",
+            command,
+            log_file
+        )
+
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-l', '--ligand',
                         help='Input a ligand file [*.gro]')
-    parser.add_argument('-i', '--itp',
+    parser.add_argument('-i', '--itp', dest="ligand_topology",
                         help='Input a ligand topology file [*.itp]')
     parser.add_argument('-p', '--protein',
                         help='Input a protein file (default:protein.pdb)')
-    parser.add_argument('-w', '--wdir',
+    parser.add_argument('-w', '--wdir', dest="working_dir",
                         help='Working Directory of project (default:work)',
                         default='work')
     parser.add_argument('-v', '--verbose', help='Loud and Noisy[default]',
@@ -618,33 +668,41 @@ def parse_arguments():
     parser.add_argument('--force-field', dest="FF",
                         default="amber03", help="Gromacs force field to use.")
 
-    parser.add_argument('--norunmd', dest="runmd",
-                        action="store_false", default=True)
+    parser.add_argument(
+        '--norunmd',
+        dest="runmd",
+        action="store_false",
+        default=True
+    )
 
-    parser.add_argument('--resume',
-                        action="store_true")
+    parser.add_argument(
+        '-R',
+        '--resume',
+        action="store_true"
+    )
 
-    parser.add_argument('--gpu',
-                        action="store_true",
-                        help="Use GPU on MD steps. Requres GROMACS compiled with GPU support.")
+    parser.add_argument(
+        '--gpu',
+        action="store_true",
+        help="Use GPU on MD steps. Requres GROMACS compiled with GPU support."
+    )
+
+    parser.add_argument(
+        '-S',
+        action="store_true",
+        dest="refresh_mdp",
+        help="Replace the mdp in the working directory with another."
+    )
 
     return parser.parse_args()
 
 
 def run_pipeline(arguments):
 
-    # TODO: Think of a better name
-    obj = ProteinLigMin(
-        ligand_file=arguments.ligand,
-        ligand_topology_file=arguments.itp,
-        protein_file=arguments.protein,
-        working_dir=arguments.wdir,
-        verbose=arguments.verbose,
-        quiet=arguments.quiet
-    )
+    obj = GromacsSimulation(arguments)
     if arguments.resume:
         print("RESUMING")
-        obj.continue_mdrun()
+        obj.continue_mdrun(arguments)
         sys.exit(1)
 
     obj.welcome()
@@ -685,8 +743,8 @@ def main():
     arguments = parse_arguments()
 
     # FIXME: well...
-    if arguments.wdir[-1] != "/":
-        arguments.wdir += "/"
+    if arguments.working_dir[-1] != "/":
+        arguments.working_dir += "/"
 
     run_pipeline(arguments)
 

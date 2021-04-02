@@ -2,9 +2,11 @@
 from typing import List
 import argparse
 import sys
+import os
 import numpy as np
 import warnings
 import MDAnalysis
+import MDAnalysis as mda
 from MDAnalysis.analysis import diffusionmap, align, rms
 
 import numpy.linalg
@@ -17,10 +19,28 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-m", dest='FilePrefix', nargs="*")
+    parser.add_argument("-f", dest='FilePrefix', nargs="*")
+    parser.add_argument("-d", dest='AutoDetect')
 
-
+    parser.add_argument("-M", dest='DoMatrix', action="store_true")
+    parser.add_argument("-T", dest='DoTimeseries', action="store_true")
     return parser.parse_args()
+
+
+def autodetect_files(root_path, pattern="md.gro") -> List[str]:
+    def file_to_prefix(f):
+        ext = f.split(".")[-1]
+        return f.replace("." + ext, "")
+
+    def detect(path):
+        for f in os.listdir(path):
+            F = os.path.join(path, f)
+            if os.path.isdir(F):
+                yield from detect(F)
+            elif f.endswith(pattern):
+                yield file_to_prefix(F)
+
+    return list(detect(root_path))
 
 
 class Positions():
@@ -97,12 +117,19 @@ def pairwise_rmsds(POS):
 
 def analyzeMD(arguments):
     print("File prefixes used:")
-    for prefix in arguments.FilePrefix:
+    if arguments.AutoDetect:
+        SimulationPrefixes = autodetect_files(arguments.AutoDetect)
+    else:
+        SimulationPrefixes = arguments.FilePrefix
+
+    for prefix in SimulationPrefixes:
         print("\t" + prefix)
+
+    assert(SimulationPrefixes)
 
     us = [
         MDAnalysis.Universe(FP + ".gro", FP + ".trr")
-        for FP in arguments.FilePrefix
+        for FP in SimulationPrefixes
     ]
 
     # can access via segid (4AKE) and atom name
@@ -121,31 +148,36 @@ def analyzeMD(arguments):
     ] # a selection (AtomGroup)
 
 
-    matrix = diffusionmap.DistanceMatrix(us[0], select='name CA').run()
+    print("Data loading done.")
+    if False:
+        matrix = diffusionmap.DistanceMatrix(us[0], select='name CA').run()
 
-    if True:
+    if arguments.DoMatrix:
         print("Processing pairwise RMSD matrix.")
-        POS = RMSDStudy(us, arguments.FilePrefix)
+        POS = RMSDStudy(us, SimulationPrefixes)
         labels = [w.label for w in POS]
         RMSDS = pairwise_rmsds(POS)
         print(RMSDS)
         show_matrix(RMSDS, labels)
 
-    if True:
+    if arguments.DoTimeseries:
         print("Processing timeseries RMSD plots.")
         labels = [
             clean_universe_prefix(f)
-            for f in arguments.FilePrefix
+            for f in SimulationPrefixes
         ]
         series = list(map(time_series_rms, us))
         show_rmsd_series(series, labels)
 
-    sys.exit(0)
-    for i, ts in enumerate(us[0].trajectory):     # iterate through all frames
-        #r = cterm.position - nterm.position # end-to-end vector from atom positions
-        print(dir(ts))
-        print(ts.positions)
-        print(i)
+
+    if False:
+        for i, ts in enumerate(us[0].trajectory):
+            # iterate through all frames
+            #r = cterm.position - nterm.position
+            # end-to-end vector from atom positions
+            print(dir(ts))
+            print(ts.positions)
+            print(i)
     #r = bb.position
     #d = numpy.linalg.norm(r)  # end-to-end distance
     #rgyr = bb.radius_of_gyration()  # method of AtomGroup
@@ -167,6 +199,7 @@ def show_matrix(results, labels):
     ax.set_yticklabels(labels)
     ax.set_xticklabels(labels)
 
+    plt.tight_layout()
     plt.show()
 
 
@@ -202,7 +235,22 @@ def time_series_rms(u, verbose=True):
     for t, traj in enumerate(u.trajectory):
         if t == 0:
             REF = bb.positions.copy()
+
             #FREF = rms.RMSF(bb).run().rmsf
+            ref_coordinates = u.trajectory.timeseries(asel=bb).mean(axis=1)
+
+            # Make a reference structure (need to reshape into a
+            # 1-frame "trajectory").
+            ref = mda.Merge(bb).load_new(ref_coordinates[:, None, :],
+                                  order="afc")
+
+            aligner = align.AlignTraj(u, ref, select="protein and name CA",
+                          in_memory=True).run()
+            # need to write the trajectory to
+            # disk for PMDA 0.3.0 (see issue #15)
+            with mda.Writer("rmsfit.xtc", n_atoms=u.atoms.n_atoms) as W:
+                for ts in u.trajectory:
+                    W.write(u.atoms)
         else:
             if verbose:
                 print(f"{t} of {J}")
@@ -210,10 +258,13 @@ def time_series_rms(u, verbose=True):
             v = rms.rmsd(REF, bb.positions)
             rmsds.append(v)
 
+    w = rms.RMSF(bb).run().rmsf
+    print(w.shape)
+
             #w = np.mean(rms.RMSF(bb).run().rmsf - FREF)
             #rmsfs.append(w)
 
-    return [ rmsds, [] ]
+    return [rmsds, []]
 
 
 def plotq(matrix):

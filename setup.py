@@ -16,7 +16,7 @@ setup(
     entry_points={
         'console_scripts': [
             "autogromacs=autogromacs.autoGromacs:main",
-            "gromacstester=autogromacs.forceFieldCompatTester:main",
+            "gromacsfftester=autogromacs.forceFieldCompatTester:main",
             "mdanalyze=autogromacs.mdanalysis:main"
         ]
     },

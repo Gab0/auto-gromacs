@@ -20,7 +20,7 @@ ForceFields = [
     "gromos54a7",
 ]
 
-ForceFields = ForceFields[:3]
+#ForceFields = ForceFields[4:]
 
 class AutoGromacsArgs():
     itp = None
@@ -28,11 +28,13 @@ class AutoGromacsArgs():
     verbose = False
     quiet = True
     resume = False
+    ligand_topology = ""
+
     def __init__(self, p, ff, runmd=False, w="work/"):
         self.protein = p
         self.FF = ff
         self.runmd = runmd
-        self.wdir = w
+        self.working_dir = w
 
 
 def read_directory():
@@ -98,6 +100,7 @@ def show_results(results, Files, ForceFields):
     ax.set_yticklabels(Files)
     ax.set_xticklabels(ForceFields)
 
+    plt.tight_layout()
     plt.savefig("results.png")
 
 
