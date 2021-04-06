@@ -1,7 +1,7 @@
 ; Run parameters
 integrator	= md		; leap-frog integrator
-nsteps		= 8000000	; 2 * X = 2X / 1000 ps (2X / 1000000 ns)
-dt		= 0.002		; 2 fs
+nsteps		= 12 * 1000000	; 2 * X = 2X / 1000 ps (2X / 1000000 ns)
+dt		= 0.001		; 1 fs
 ; Output control
 nstxout		          = 5000		; save coordinates every 10.0 ps
 nstvout		          = 5000  	; save velocities every 10.0 ps
