@@ -22,9 +22,10 @@ def parse_arguments():
     parser.add_argument("-f", dest='FilePrefix', nargs="*")
     parser.add_argument("-d", dest='AutoDetect')
 
-    parser.add_argument("-t", dest='TrajSuffix')
+    parser.add_argument("-t", dest='TrajSuffix', default="")
     parser.add_argument("-M", dest='DoMatrix', action="store_true")
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
+
     return parser.parse_args()
 
 
@@ -70,7 +71,7 @@ def index_label(l: int) -> str:
         return str(l)
 
 
-def clean_universe_prefix(p):
+def clean_universe_prefix(p: str) -> str:
     try:
         p = p.split("/")[-2]
     except IndexError:
@@ -116,17 +117,28 @@ def pairwise_rmsds(POS):
     return w
 
 
-def analyzeMD(arguments):
-    print("File prefixes used:")
+def loadSimulationPrefixes(arguments):
+
+    SimulationPrefixes = []
     if arguments.AutoDetect:
         SimulationPrefixes = autodetect_files(arguments.AutoDetect)
-    else:
-        SimulationPrefixes = arguments.FilePrefix
 
+    SimulationPrefixes += arguments.FilePrefix
+
+    print("File prefixes used:")
     for prefix in SimulationPrefixes:
         print("\t" + prefix)
 
-    assert(SimulationPrefixes)
+    if not SimulationPrefixes:
+        print("FATAL: No prefixes found.")
+        sys.exit(1)
+
+    return SimulationPrefixes
+
+
+def analyzeMD(arguments):
+
+    SimulationPrefixes = loadSimulationPrefixes(arguments)
 
     us = [
         MDAnalysis.Universe(FP + ".gro", FP + arguments.TrajSuffix + ".trr")
@@ -244,11 +256,18 @@ def time_series_rms(u, verbose=True):
 
             # Make a reference structure (need to reshape into a
             # 1-frame "trajectory").
-            ref = mda.Merge(bb).load_new(ref_coordinates[:, None, :],
-                                  order="afc")
+            ref = mda.Merge(bb).load_new(
+                ref_coordinates[:, None, :],
+                order="afc"
+            )
 
-            aligner = align.AlignTraj(u, ref, select="protein and name CA",
-                          in_memory=True).run()
+            aligner = align.AlignTraj(
+                u,
+                ref,
+                select="protein and name CA",
+                in_memory=True
+            ).run()
+
             # need to write the trajectory to
             # disk for PMDA 0.3.0 (see issue #15)
             with mda.Writer("rmsfit.xtc", n_atoms=u.atoms.n_atoms) as W:
