@@ -83,6 +83,14 @@ def clean_universe_prefix(p: str) -> str:
     return p
 
 
+def get_label(u: mda.Universe) -> str:
+    A = clean_universe_prefix(u.filename)
+
+    t = u.trajectory.totaltime
+    T = "t=%.2fns" % (t / 1000)
+    return A + " " + T
+
+
 def RMSDStudy(us, unames):
     POS = []
 
@@ -176,13 +184,12 @@ def analyzeMD(arguments):
     if arguments.DoTimeseries:
         print("Processing timeseries RMSD plots.")
         labels = [
-            clean_universe_prefix(f)
-            for f in SimulationPrefixes
+            get_label(u)
+            for u in us
         ]
         series = list(map(time_series_rms, us))
 
         show_rmsd_series(series, labels)
-
 
     if False:
         for i, ts in enumerate(us[0].trajectory):
