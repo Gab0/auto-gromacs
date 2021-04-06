@@ -22,6 +22,7 @@ def parse_arguments():
     parser.add_argument("-f", dest='FilePrefix', nargs="*")
     parser.add_argument("-d", dest='AutoDetect')
 
+    parser.add_argument("-t", dest='TrajSuffix')
     parser.add_argument("-M", dest='DoMatrix', action="store_true")
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
     return parser.parse_args()
@@ -128,7 +129,7 @@ def analyzeMD(arguments):
     assert(SimulationPrefixes)
 
     us = [
-        MDAnalysis.Universe(FP + ".gro", FP + ".trr")
+        MDAnalysis.Universe(FP + ".gro", FP + arguments.TrajSuffix + ".trr")
         for FP in SimulationPrefixes
     ]
 
@@ -167,6 +168,7 @@ def analyzeMD(arguments):
             for f in SimulationPrefixes
         ]
         series = list(map(time_series_rms, us))
+
         show_rmsd_series(series, labels)
 
 
@@ -230,6 +232,7 @@ def time_series_rms(u, verbose=True):
     rmsds = []
     rmsfs = []
     bb = u.select_atoms("backbone")
+
     J = len(u.trajectory)
 
     for t, traj in enumerate(u.trajectory):
@@ -258,8 +261,8 @@ def time_series_rms(u, verbose=True):
             v = rms.rmsd(REF, bb.positions)
             rmsds.append(v)
 
-    w = rms.RMSF(bb).run().rmsf
-    print(w.shape)
+    #w = rms.RMSF(bb).run().rmsf
+    #print(w.shape)
 
             #w = np.mean(rms.RMSF(bb).run().rmsf - FREF)
             #rmsfs.append(w)

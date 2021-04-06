@@ -20,7 +20,7 @@ ForceFields = [
     "gromos54a7",
 ]
 
-#ForceFields = ForceFields[4:]
+ForceFields = ForceFields[:3]#["charmm36"]
 
 class AutoGromacsArgs():
     itp = None

@@ -646,6 +646,19 @@ class GromacsSimulation(object):
             log_file
         )
 
+    def postprocess(self):
+        trjconv = settings.g_prefix +  "trjconv"
+        step_no = "16"
+        log_file = self.path_log(step_no)
+        command = [
+            trjconv,
+            "-f", self.to_wd("md.trr"),
+            "-o", self.to_wd("md5.trr"),
+            "-skip", str(5)
+        ]
+
+        command = " ".join(command)
+        self.run_process("16", "Post process", command, log_file)
 
 
 def parse_arguments():
@@ -708,7 +721,6 @@ def run_pipeline(arguments):
     obj.welcome()
     obj.gather_files()
 
-
     STEPS = [
         # mandatory steps;
         obj.pdb2gmx_coord,
@@ -725,9 +737,9 @@ def run_pipeline(arguments):
             obj.nvt,
             obj.npt,
             obj.initmd,
-            obj.md
+            obj.md,
+            obj.postprocess
         ]
-
 
     for STEP in STEPS:
         now = datetime.datetime.now().strftime("%H:%M:%S")
