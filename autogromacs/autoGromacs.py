@@ -61,6 +61,8 @@ class GromacsSimulation(object):
         self.verbose = arguments.verbose
         self.quiet = arguments.quiet
 
+        self.maxwarn = str(2)
+
         # A user cant use both the verbose and the quiet flag together
         if self.verbose is True and self.quiet is True:
             print('Can\'t use both the verbose and quiet flags together')
@@ -77,11 +79,15 @@ class GromacsSimulation(object):
             contents = f.read()
 
         BASE = '#include "'
+        QUERY = BASE + self.working_dir + "/*"
         output = re.sub(
-            BASE + self.working_dir + "/*",
+            QUERY,
             BASE,
             contents
         )
+
+        print(f"Replacing {QUERY} with {BASE}\n\t@{fpath}")
+
         with open(fpath, 'w') as f:
             f.write(output)
 
@@ -154,7 +160,9 @@ class GromacsSimulation(object):
         print("CHEERS: Working Directory " + self.working_dir + \
               " created Successfully")
         print("Moving the files to Working Directory" + self.working_dir)
+
         shutil.copy2(self.protein_file_path, self.working_dir + 'protein.pdb')
+
         if self.ligand_file_path:
             shutil.copy2(self.ligand_file_path, self.working_dir + 'ligand.pdb')
         #shutil.copy2(self.ligand_topology_file_path,
@@ -372,6 +380,7 @@ class GromacsSimulation(object):
             "-p", self.working_dir + "topol.top",
             "-o", self.working_dir + "ions.tpr",
             "-po", self.working_dir + "mdout.mdp",
+            "-maxwarn", self.maxwarn,
             ">", log_file,
             "2>&1"
         ]
@@ -713,10 +722,14 @@ def parse_arguments():
 def run_pipeline(arguments):
 
     obj = GromacsSimulation(arguments)
+
     if arguments.resume:
-        print("RESUMING")
-        obj.continue_mdrun(arguments)
-        sys.exit(1)
+        if os.path.isdir(arguments.working_dir):
+            print("RESUMING")
+            # FIXME: Improve simulation/resume integration;
+            obj.continue_mdrun(arguments)
+            obj.postprocess()
+            sys.exit(1)
 
     obj.welcome()
     obj.gather_files()
