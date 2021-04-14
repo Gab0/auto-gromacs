@@ -30,12 +30,22 @@ def handle_error(ERROR, step_no, log_file=None):
             print(READ_LOG)
 
         if ERROR < 0:
-            print("HEADS UP: Killed by signal :(", -ERROR)
+            print(f"HEADS UP: Killed by signal {-ERROR} :(")
             sys.exit(ERROR)
         else:
             print("\n")
             print("HEADS UP: Command failed for Step %s: return code %i." % (step_no, ERROR))
             sys.exit(ERROR)
+
+
+def read_settings_from_mdp(fpath):
+    pattern = r"(\w+)[\t ]*=[\t ]*([\w\d\.]+)[\t ]*;*"
+    with open(fpath) as mdp:
+        for line in mdp.read().splitlines():
+            cat = re.findall(pattern, line)
+            if cat:
+                name, parameter = cat[0]
+                yield name, parameter
 
 
 class GromacsSimulation(object):
@@ -60,9 +70,9 @@ class GromacsSimulation(object):
 
         self.verbose = arguments.verbose
         self.quiet = arguments.quiet
+        self.dummy = arguments.dummy
 
         self.maxwarn = str(2)
-
         # A user cant use both the verbose and the quiet flag together
         if self.verbose is True and self.quiet is True:
             print('Can\'t use both the verbose and quiet flags together')
@@ -80,16 +90,21 @@ class GromacsSimulation(object):
 
         BASE = '#include "'
         QUERY = BASE + self.working_dir + "/*"
-        output = re.sub(
-            QUERY,
-            BASE,
-            contents
-        )
 
-        print(f"Replacing {QUERY} with {BASE}\n\t@{fpath}")
+        print(f"Replace {QUERY} with {BASE}\n\t@{fpath}?")
+        if re.findall(QUERY, contents):
+            output = re.sub(
+                QUERY,
+                BASE,
+                contents
+            )
 
-        with open(fpath, 'w') as f:
-            f.write(output)
+            print("Ok.")
+
+            with open(fpath, 'w') as f:
+                f.write(output)
+        else:
+            print("Query not found!")
 
     def path_log(self, n):
         return self.to_wd(f"step{n}.log")
@@ -122,6 +137,37 @@ class GromacsSimulation(object):
         ret = subprocess.call(command, shell=True)
 
         handle_error(ret, step_no, log_file)
+
+
+    def build_settings_summary(self, arguments):
+        settings_file = "settings.csv"
+
+        Summary = {
+            "force field": arguments.FF,
+            "water model": arguments.solvent
+        }
+
+        with open(self.to_wd(settings_file), 'w') as f:
+            header = ",".join(["Step", "Parameter", "Value"])
+            f.write(header + "\n")
+
+            for k in sorted(Summary.keys()):
+                w = ",".join(["*", k, Summary[k]])
+                f.write(w + "\n")
+
+            mdp_prefixes = [
+                "ions",
+                "nvt",
+                "npt",
+                "md"]
+
+            for mdp_prefix in mdp_prefixes:
+                data = read_settings_from_mdp(
+                    self.to_wd(mdp_prefix + ".mdp"))
+                for param, value in data:
+                    w = ",".join([mdp_prefix.upper(), param, value])
+                    f.write(w + "\n")
+
 
     def gather_files(self):
         if self.ligand_file_path and not os.path.isfile(self.ligand_file_path):
@@ -176,7 +222,6 @@ class GromacsSimulation(object):
                 return 1
             return self.prepare_system()
 
-
         return 0
 
     def pdb2gmx_proc(self, arguments, TARGET):
@@ -204,7 +249,7 @@ class GromacsSimulation(object):
             "-i", POSRE_PATH,
             "-p", TOPOL_PATH,
             "-ff", arguments.FF,
-            "-water spce"
+            "-water", arguments.solvent
         ]
 
         #assert(os.path.isfile(POSRE_PATH))
@@ -282,12 +327,7 @@ class GromacsSimulation(object):
 
         f1 = open(self.working_dir + 'topol.top', 'r')
         f2 = open(self.working_dir + 'topol_temp.top', 'w')
-        """
-        for line in f1:
-            f2.write(line.replace('; Include water topology',
-                                  '; Include Ligand topology\n #include '
-                                  '" ' + self.working_dir + 'ligand.itp"\n\n\n; Include water topology ')
-                     )"""
+
         f1.close()
         f2.close()
 
@@ -305,13 +345,10 @@ class GromacsSimulation(object):
         print("CHEERS: STEP[2] SUCCESSFULLY COMPLETED :)\n\n\n")
 
     def solvate_complex(self):
-        # editconf -f system.gro -o newbox.gro -bt cubic -d 1 -c
-        # genbox -cp newbox.gro -cs spc216.gro -p topol.top -o solv.gro
-
         print(">STEP3 : Initiating Procedure to Solvate Complex")
         editconf = settings.g_prefix + "editconf"
         step_no = "3"
-        step_name = "Defining the Box"
+        step_name = "Defining the Solvation Box"
 
         log_file = self.path_log(step_no)
 
@@ -324,7 +361,6 @@ class GromacsSimulation(object):
             "-d", "1",
             "-c"
         ]
-
 
         self.run_process(step_no, step_name, " ".join(command), log_file)
 
@@ -339,7 +375,6 @@ class GromacsSimulation(object):
         if self.run_process(step_no, step_name, command):
             return 1
 
-        #MODF
         command = "gmx solvate -cp " + self.working_dir + "newbox.gro -p " + \
             self.working_dir + "topol.top -cs spc216.gro -o " + \
             self.working_dir + "solv.gro >> " + self.working_dir + \
@@ -447,7 +482,7 @@ class GromacsSimulation(object):
     def create_em_mdp(self):
         self.load_mdp(EMW_MDP)
 
-    def minimize(self):
+    def minimize(self, arguments):
         print(">STEP7 : Preparing the files for Minimisation")
         # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
         # mdrun -v -deffnm em
@@ -471,22 +506,17 @@ class GromacsSimulation(object):
             "em.trr -e " + self.working_dir + "em.edr -x " + \
             self.working_dir + "em.xtc -g " + self.working_dir + \
             "em.log > " + self.working_dir + "step8.log 2>&1"
-        self.run_process(step_no, step_name, command)
 
-    def nvt(self):
+        if not arguments.dummy:
+            self.run_process(step_no, step_name, command)
+
+    def nvt(self, arguments):
         print(">STEP9 : Initiating the Procedure to Equilibrate the System")
         print("Beginging Equilibration with NVT Ensemble")
         grompp = settings.g_prefix + "grompp"
         mdrun = settings.g_prefix + "mdrun"
         step_no = "9"
         step_name = "Preparing files for NVT Equilibration"
-
-        """
-        shutil.copy2(*[
-            os.path.join(self.working_dir, x)
-            for x in ["#posre.itp.1#", "posre.itp"]
-        ])
-        """
 
         if not (os.path.isfile(self.working_dir + NVT_MDP)):
             self.load_mdp(NVT_MDP)
@@ -505,7 +535,8 @@ class GromacsSimulation(object):
         ]
         command = " ".join(command)
 
-        self.run_process(step_no, step_name, command)
+        if not arguments.dummy:
+            self.run_process(step_no, step_name, command)
 
         step_no = "10"
         step_name = "NVT Equilibration"
@@ -519,9 +550,10 @@ class GromacsSimulation(object):
                   " -deffnm " + self.working_dir + "nvt"+\
                   " > " + self.working_dir + "step10.log 2>&1"
         # command = "gmx mdrun -deffnm nvt > step10.log 2>&1"
-        self.run_process(step_no, step_name, command)
+        if not arguments.dummy:
+            self.run_process(step_no, step_name, command)
 
-    def npt(self):
+    def npt(self, arguments):
         print(">STEP11 : Initiating the Procedure to Equilibrate the System")
         print("Beginging Equilibration with NPT Ensemble")
         grompp = settings.g_prefix + "grompp"
@@ -542,7 +574,9 @@ class GromacsSimulation(object):
                   " -po "+ self.working_dir + "mdout.mdp" +\
                   " -maxwarn 3" +\
                   " > " + self.working_dir + "step11.log 2>&1"
-        self.run_process(step_no, step_name, command)
+
+        if not arguments.dummy:
+            self.run_process(step_no, step_name, command)
 
         step_no = "12"
         step_name = "NPT Equilibration"
@@ -551,7 +585,9 @@ class GromacsSimulation(object):
             "npt.trr -e " + self.working_dir + "npt.edr -x " + \
             self.working_dir + "npt.xtc -g " + self.working_dir + "npt.log > "\
             + self.working_dir + "step12.log 2>&1"
-        self.run_process(step_no, step_name, command)
+
+        if not arguments.dummy:
+            self.run_process(step_no, step_name, command)
 
     def initmd(self):
         print(">STEP13 : Initiating the Production Run")
@@ -570,7 +606,9 @@ class GromacsSimulation(object):
                   " -o " + self.working_dir + "md.tpr" +\
                   " -po "+ self.working_dir + "mdout.mdp" +\
                   " -maxwarn 3 "
-        self.run_process(step_no, step_name, command, self.path_log(step_no))
+
+        if not self.dummy:
+            self.run_process(step_no, step_name, command, self.path_log(step_no))
 
 
     def base_mdrun(self):
@@ -591,11 +629,10 @@ class GromacsSimulation(object):
         step_no = "14"
         step_name = "Creating producion MD."
 
-
-
         command = self.base_mdrun() + ["-cpo", self.path_state_file()]
         if arguments.gpu:
             command += [
+                "-nb", "gpu",
                 "-pme", "gpu",
                 "-pmefft", "gpu",
                 "-bonded", "gpu",
@@ -604,7 +641,8 @@ class GromacsSimulation(object):
 
         command = " ".join(command)
         log_file = self.path_log(step_no)
-        self.run_process(step_no, step_name, command, log_file)
+        if not arguments.dummy:
+            self.run_process(step_no, step_name, command, log_file)
 
 
     def continue_mdrun(self, arguments):
@@ -667,7 +705,9 @@ class GromacsSimulation(object):
         ]
 
         command = " ".join(command)
-        self.run_process("16", "Post process", command, log_file)
+
+        if not self.dummy:
+            self.run_process("16", "Post process", command, log_file)
 
 
 def parse_arguments():
@@ -689,7 +729,14 @@ def parse_arguments():
 
     parser.add_argument('--force-field', dest="FF",
                         default="amber03", help="Gromacs force field to use.")
+    parser.add_argument('--water', dest="solvent",
+                        default="spce", help="Select gromacs water model.")
 
+    parser.add_argument(
+        "--dummy",
+        action="store_true",
+        help="Do not run simulations (for debugging)."
+    )
     parser.add_argument(
         '--norunmd',
         dest="runmd",
@@ -750,8 +797,9 @@ def run_pipeline(arguments):
             obj.nvt,
             obj.npt,
             obj.initmd,
+            obj.build_settings_summary,
             obj.md,
-            obj.postprocess
+            obj.postprocess,
         ]
 
     for STEP in STEPS:
