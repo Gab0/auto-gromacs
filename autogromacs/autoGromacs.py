@@ -147,27 +147,53 @@ class GromacsSimulation(object):
             "water model": arguments.solvent
         }
 
+        mdp_prefixes = [
+            "ions",
+            "nvt",
+            "npt",
+            "md"
+        ]
+
+        header = ["Stage", "Parameter", "Value"]
+        mdp_parameters = []
+
+        for k in sorted(Summary.keys()):
+            mdp_parameters.append(["*", k, Summary[k]])
+
+        for mdp_prefix in mdp_prefixes:
+            data = read_settings_from_mdp(
+                self.to_wd(mdp_prefix + ".mdp"))
+            for param, value in data:
+                k = [mdp_prefix.upper(), param, value]
+                mdp_parameters.append(k)
+
+        mdp_parameters = self.compact_parameter_list(mdp_parameters)
         with open(self.to_wd(settings_file), 'w') as f:
-            header = ",".join(["Step", "Parameter", "Value"])
-            f.write(header + "\n")
+            for parameter in [header] + mdp_parameters:
+                f.write(",".join(parameter) + "\n")
 
-            for k in sorted(Summary.keys()):
-                w = ",".join(["*", k, Summary[k]])
-                f.write(w + "\n")
+    def compact_parameter_list(self, parameters):
+        compat = {}
 
-            mdp_prefixes = [
-                "ions",
-                "nvt",
-                "npt",
-                "md"]
+        def make_key(parameter, value):
+            return f"{parameter}:{value}"
 
-            for mdp_prefix in mdp_prefixes:
-                data = read_settings_from_mdp(
-                    self.to_wd(mdp_prefix + ".mdp"))
-                for param, value in data:
-                    w = ",".join([mdp_prefix.upper(), param, value])
-                    f.write(w + "\n")
+        for stage, parameter, value in parameters:
+            K = make_key(parameter, value)
+            if K not in compat.keys():
+                compat[K] = []
+            compat[K].append(stage)
 
+        output_parameters = []
+        for stage, parameter, value in parameters:
+            K = make_key(parameter, value)
+            if K in compat.keys():
+                stages = compat[K]
+                message = "+".join(stages)
+                output_parameters.append([message, parameter, value])
+                del compat[K]
+
+        return output_parameters
 
     def gather_files(self):
         if self.ligand_file_path and not os.path.isfile(self.ligand_file_path):
