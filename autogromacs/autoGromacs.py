@@ -7,6 +7,7 @@ import re
 import subprocess
 import shutil
 import datetime
+import pathlib
 
 from .core.messages import welcome_message, backup_folder_already_exists
 from .core import settings
@@ -196,7 +197,8 @@ class GromacsSimulation(object):
         return output_parameters
 
     def gather_files(self):
-        if self.ligand_file_path and not os.path.isfile(self.ligand_file_path):
+        if self.ligand_file_path and not os.path.isfile(
+                self.ligand_file_path):
             print('Ligand file not found at ', self.ligand_file_path)
             needStepZero = 1
 
@@ -224,7 +226,8 @@ class GromacsSimulation(object):
             if os.rename(self.working_dir, "BACKUP"):
                 print("Old " + self.working_dir + " was moved to BACKUP/")
 
-        os.mkdir(self.working_dir)
+
+        pathlib.Path(self.working_dir).mkdir(parents=True, exist_ok=True)
 
         global bashlog
         bashlog = open(os.path.join(self.working_dir, 'bashlog'), 'w')
@@ -753,16 +756,26 @@ def parse_arguments():
     parser.add_argument('-q', '--quiet', help='Be very quit',
                         action="store_true")
 
-    parser.add_argument('--force-field', dest="FF",
-                        default="amber03", help="Gromacs force field to use.")
-    parser.add_argument('--water', dest="solvent",
-                        default="spce", help="Select gromacs water model.")
+    parser.add_argument(
+        '--force-field',
+        dest="FF",
+        default="amber03",
+        help="Gromacs force field to use."
+    )
+
+    parser.add_argument(
+        '--water',
+        dest="solvent",
+        default="spce",
+        help="Select gromacs water model."
+    )
 
     parser.add_argument(
         "--dummy",
         action="store_true",
         help="Do not run simulations (for debugging)."
     )
+
     parser.add_argument(
         '--norunmd',
         dest="runmd",
