@@ -1,5 +1,5 @@
 
-from typing import List
+from typing import List, Union
 import argparse
 import sys
 import os
@@ -25,6 +25,7 @@ def parse_arguments():
     parser.add_argument("-t", dest='TrajSuffix', default="")
     parser.add_argument("-M", dest='DoMatrix', action="store_true")
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
+    parser.add_argument("-w", dest='WriteOutput', action="store_true")
 
     return parser.parse_args()
 
@@ -131,7 +132,8 @@ def loadSimulationPrefixes(arguments):
     if arguments.AutoDetect:
         SimulationPrefixes = autodetect_files(arguments.AutoDetect)
 
-    SimulationPrefixes += arguments.FilePrefix
+    if arguments.FilePrefix is not None:
+        SimulationPrefixes += arguments.FilePrefix
 
     print("File prefixes used:")
     for prefix in SimulationPrefixes:
@@ -206,7 +208,7 @@ def analyzeMD(arguments):
     #      ts.frame, d, rgyr))
 
 
-def show_matrix(results, labels):
+def show_matrix(results, labels, filepath: Union[str, None]):
     fig, ax = plt.subplots()
     im = ax.imshow(results, cmap='viridis')
 
@@ -221,11 +223,16 @@ def show_matrix(results, labels):
     ax.set_xticklabels(labels)
 
     plt.tight_layout()
-    plt.show()
+
+    if filepath is not None:
+        plt.savefig(filepath)
+    else:
+        plt.show()
 
 
 def show_rmsd_series(rmsd_series: List[List[List[float]]],
-                     labels: List[str]):
+                     labels: List[str],
+                     filepath: Union[str, None]):
     X = len(labels)
     ncols = 3
     nrows = round(np.ceil(X / ncols))
@@ -244,10 +251,14 @@ def show_rmsd_series(rmsd_series: List[List[List[float]]],
         axk[i].set_title(label)
 
     plt.tight_layout()
-    plt.show()
+
+    if filepath is not None:
+        plt.savefig(filepath)
+    else:
+        plt.show()
 
 
-def time_series_rms(u, verbose=True):
+def time_series_rms(u, verbose=False):
     rmsds = []
     rmsfs = []
     bb = u.select_atoms("backbone")
