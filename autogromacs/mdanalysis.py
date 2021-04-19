@@ -171,6 +171,8 @@ def analyzeMD(arguments):
     ] # a selection (AtomGroup)
 
 
+    base_filepath = arguments.WriteOutput
+
     print("Data loading done.")
     if False:
         matrix = diffusionmap.DistanceMatrix(us[0], select='name CA').run()
@@ -180,8 +182,13 @@ def analyzeMD(arguments):
         POS = RMSDStudy(us, SimulationPrefixes)
         labels = [w.label for w in POS]
         RMSDS = pairwise_rmsds(POS)
-        print(RMSDS)
-        show_matrix(RMSDS, labels)
+
+        matrix_filepath = None
+        if base_filepath is not None:
+            matrix_filepath = base_filepath + "_matrix.png"
+
+        show_matrix(RMSDS, labels, matrix_filepath)
+        
 
     if arguments.DoTimeseries:
         print("Processing timeseries RMSD plots.")
@@ -191,7 +198,11 @@ def analyzeMD(arguments):
         ]
         series = list(map(time_series_rms, us))
 
-        show_rmsd_series(series, labels)
+        timeseries_filepath = None
+        if base_filepath:
+            timeseries_filepath = base_filepath + "_ts.png"
+
+        show_rmsd_series(series, labels, timeseries_filepath)
 
     if False:
         for i, ts in enumerate(us[0].trajectory):
