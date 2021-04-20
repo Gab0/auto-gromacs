@@ -5,9 +5,6 @@ welcome_message = """
         [ -=-=-    a u t o  G r o m a c s   -=-=-  ]
         ********************************************
         Version """ + version + """
-        Check out """ + weblink + """ for more information.
-
-          ****CHEERS & HAPPY RESEARCH****
 
         Based on RSQUARE-LABS GROMACS AUTOMATION SCRIPT
 
