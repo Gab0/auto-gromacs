@@ -130,7 +130,7 @@ class GromacsSimulation(object):
 
         # Assure logging is enabled;
         if ">" not in command and log_file is not None:
-            command += f">> {log_file} 2>&1"
+            command += f" >> {log_file} 2>&1"
 
         if bashlog is not None:
             bashlog.write("%s\n" % command)
@@ -373,7 +373,7 @@ class GromacsSimulation(object):
         print("INFO: Topology File Updated with Ligand topology info ")
         print("CHEERS: STEP[2] SUCCESSFULLY COMPLETED :)\n\n\n")
 
-    def solvate_complex(self):
+    def solvate_complex(self, arguments):
         print(">STEP3 : Initiating Procedure to Solvate Complex")
         editconf = settings.g_prefix + "editconf"
         step_no = "3"
@@ -387,7 +387,7 @@ class GromacsSimulation(object):
             "-f", self.working_dir + "protein.gro",
             "-o", self.working_dir + "newbox.gro",
             "-bt", "cubic",
-            "-d", "1",
+            "-d", str(arguments.box_size),
             "-c"
         ]
 
@@ -628,14 +628,17 @@ class GromacsSimulation(object):
             self.load_mdp("md.mdp")
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
-        command = grompp +\
-                  " -f " + self.working_dir + "md.mdp" +\
-                  " -c " + self.working_dir + "npt.gro" +\
-                  " -p " + self.working_dir + "topol.top" +\
-                  " -o " + self.working_dir + "md.tpr" +\
-                  " -po "+ self.working_dir + "mdout.mdp" +\
-                  " -maxwarn 3 "
+        command = [
+            grompp,
+            "-f", self.working_dir + "md.mdp",
+            "-c", self.working_dir + "npt.gro",
+            "-p", self.working_dir + "topol.top",
+            "-o", self.working_dir + "md.tpr",
+            "-po", self.working_dir + "mdout.mdp",
+            "-maxwarn", "3"
+        ]
 
+        command = " ".join(command)
         if not self.dummy:
             self.run_process(step_no, step_name, command, self.path_log(step_no))
 
@@ -802,6 +805,12 @@ def parse_arguments():
         help="Replace the mdp in the working directory with another."
     )
 
+    parser.add_argument(
+        "--box-size",
+        type=float,
+        default=1.5,
+        help="Solvation box size."
+    )
     return parser.parse_args()
 
 
