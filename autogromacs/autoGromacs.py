@@ -1,4 +1,5 @@
 #!/bin/python
+import enum
 import shutil
 import argparse
 import sys
@@ -124,7 +125,7 @@ class GromacsSimulation(object):
         pass
 
     @staticmethod
-    def run_process(step_no, step_name, command, log_file=None):
+    def run_process(step_no, step_name, command, log_file=None, Input: str = None):
         print("INFO: Attempting to execute " + step_name + \
               " [STEP:" + step_no + "]")
 
@@ -135,9 +136,15 @@ class GromacsSimulation(object):
         if bashlog is not None:
             bashlog.write("%s\n" % command)
 
-        ret = subprocess.call(command, shell=True)
+        ret = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
 
-        handle_error(ret, step_no, log_file)
+        if Input is not None:
+            Input = Input.encode("utf-8")
+            ret.communicate(Input)
+
+        ret.wait()
+
+        handle_error(ret.returncode, step_no, log_file)
 
 
     def build_settings_summary(self, arguments):
@@ -696,7 +703,8 @@ class GromacsSimulation(object):
             ]
 
             step_no = "15.1"
-            self.run_process(step_no, "Update simulation", " ".join(GP), self.path_log(step_no))
+            self.run_process(step_no, "Update simulation", " ".join(GP),
+                             self.path_log(step_no))
 
         if not os.path.isfile(critical_file):
             print(f"RESUME {critical_file} FILE NOT FOUND.")
@@ -713,7 +721,6 @@ class GromacsSimulation(object):
             CMD = re.findall("gmx [ \-\d\w/\.]+", content)
 
         chosen = sorted(CMD, key=len, reverse=True)[0]
-        print(CMD)
         print(chosen)
 
         CMD = chosen.split(" ") + command
@@ -727,19 +734,70 @@ class GromacsSimulation(object):
 
     def postprocess(self):
         trjconv = settings.g_prefix +  "trjconv"
-        step_no = "16"
+        step_no = "POST1"
         log_file = self.path_log(step_no)
-        command = [
+
+        commandA = [
             trjconv,
             "-f", self.to_wd("md.trr"),
             "-o", self.to_wd("md5.trr"),
             "-skip", str(5)
         ]
 
-        command = " ".join(command)
+        commandA = " ".join(commandA)
+
+        commandB = [
+            trjconv,
+            "-pbc", "mol",
+            "-ur", "compact",
+            "-f", self.to_wd("md5.trr"),
+            "-s", self.to_wd("md.tpr"),
+            "-o", self.to_wd("mdf.trr")
+        ]
+
+        commandB = " ".join(commandB)
 
         if not self.dummy:
-            self.run_process("16", "Post process", command, log_file)
+            step_no = "POST_SKIP"
+            self.run_process(step_no, "Skip frames", commandA, self.path_log(step_no))
+
+            step_no = "POST_PBC"
+            self.run_process(step_no,
+                             "Resolve Periodic Boundary Conditions",
+                             commandB,
+                             self.path_log(step_no))
+
+
+class SessionAction(enum.Enum):
+    Nothing = 0
+    New = 1
+    Resume = 2
+    PostProcessOnly = 3
+    Dummy = 4
+
+
+def session_action_decision(arguments) -> SessionAction:
+
+    if not os.path.isdir(arguments.working_dir):
+        if arguments.dummy_run:
+            return SessionAction.Dummy
+
+        return SessionAction.New
+
+    TRR_Present = False
+    for F in os.listdir(arguments.working_dir):
+        if F.endswith("md.gro"):
+            if arguments.postprocess_only:
+                return SessionAction.PostProcessOnly
+            return SessionAction.Nothing
+
+        elif F.endswith("md.trr"):
+            TRR_Present = True
+
+    if TRR_Present:
+        return SessionAction.Resume
+
+    return SessionAction.Nothing
 
 
 def parse_arguments():
@@ -808,9 +866,17 @@ def parse_arguments():
     parser.add_argument(
         "--box-size",
         type=float,
-        default=1.5,
+        default=1.0,
         help="Solvation box size."
     )
+
+    parser.add_argument(
+        "-P",
+        "--postprocess-only",
+        action="store_true",
+        help="Execute postprocessing steps only."
+    )
+
     return parser.parse_args()
 
 
@@ -818,18 +884,16 @@ def run_pipeline(arguments):
 
     obj = GromacsSimulation(arguments)
 
-    if arguments.resume:
-        if os.path.isdir(arguments.working_dir):
-            print("RESUMING")
-            # FIXME: Improve simulation/resume integration;
-            obj.continue_mdrun(arguments)
-            obj.postprocess()
-            sys.exit(1)
+    Action = session_action_decision(arguments)
 
     obj.welcome()
-    obj.gather_files()
 
-    STEPS = [
+    # DECLARE STEPS
+    STEPS_GATHER = [
+        obj.gather_files
+    ]
+
+    STEPS_PREPARE = [
         # mandatory steps;
         obj.pdb2gmx_coord,
         obj.solvate_complex,
@@ -839,16 +903,41 @@ def run_pipeline(arguments):
         obj.minimize,
     ]
 
-    if arguments.runmd:
-        STEPS += [
-            # evaluation steps;
-            obj.nvt,
-            obj.npt,
-            obj.initmd,
-            obj.build_settings_summary,
-            obj.md,
-            obj.postprocess,
-        ]
+    STEPS_EXECUTE = [
+        obj.nvt,
+        obj.npt,
+        obj.initmd,
+        obj.build_settings_summary,
+        obj.md,
+        obj.postprocess,
+    ]
+
+    STEPS_RESUME = [
+        obj.continue_mdrun
+    ]
+
+    STEPS_POSTPROCESS = [
+        obj.postprocess
+    ]
+
+
+    if Action == SessionAction.Resume:
+        STEPS = STEPS_RESUME + STEPS_POSTPROCESS
+
+    elif Action == SessionAction.Nothing:
+        print(f"""Nothing to do for working directory {arguments.working_dir}:
+        .gro found.""")
+        STEPS = []
+
+    elif Action == SessionAction.PostProcessOnly:
+        STEPS = STEPS_POSTPROCESS
+
+    elif Action == SessionAction.Dummy:
+        STEPS = STEPS_GATHER + STEPS_PREPARE
+
+    elif Action == SessionAction.New:
+        STEPS = STEPS_GATHER + STEPS_PREPARE + STEPS_EXECUTE + STEPS_POSTPROCESS
+
 
     for STEP in STEPS:
         now = datetime.datetime.now().strftime("%H:%M:%S")
