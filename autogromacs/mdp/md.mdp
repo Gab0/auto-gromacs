@@ -1,6 +1,6 @@
 ; Run parameters
 integrator          = md      	; leap-frog integrator
-nsteps              = 16000000	; nsteps * dt (in ns) = T
+nsteps              = 32000000	; nsteps * dt (in ns) = T
 dt                  = 0.002	    ; 1 fs
 ; Output control
 nstxout		          = 5000      ; save coordinates every 10.0 ps
