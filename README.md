@@ -5,5 +5,5 @@ autoGromacs is a simple script to automate Gromacs (http://www.gromacs.org) eval
 Based on `rsq-gromacs` that had its repository located at `https://github.com/rsquarelabs/rsq-gromacs.git` (which seems to be gone).
 
 
-It was further modified by `gab0` to have a `setup.py` and executable scripts.
-Further development is ongoing.
+Originally written by RSquare Labs, it was further modified by `gab0` to have a `setup.py` and executable scripts.
+Development is ongoing.
