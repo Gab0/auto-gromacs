@@ -779,7 +779,7 @@ class SessionAction(enum.Enum):
 def session_action_decision(arguments) -> SessionAction:
 
     if not os.path.isdir(arguments.working_dir):
-        if arguments.dummy_run:
+        if arguments.dummy:
             return SessionAction.Dummy
 
         return SessionAction.New
