@@ -765,7 +765,9 @@ class GromacsSimulation(object):
             self.run_process(step_no,
                              "Resolve Periodic Boundary Conditions",
                              commandB,
-                             self.path_log(step_no))
+                             self.path_log(step_no),
+                             Input="0"
+                             )
 
 
 class SessionAction(enum.Enum):
