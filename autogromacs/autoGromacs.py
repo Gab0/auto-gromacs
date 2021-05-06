@@ -660,6 +660,7 @@ class GromacsSimulation(object):
             "-e", self.working_dir + "md.edr",
             "-x", self.working_dir + "md.xtc",
             "-g", self.working_dir + "md.log",
+            "-cpo", self.path_state_file()
         ]
 
 
@@ -668,7 +669,7 @@ class GromacsSimulation(object):
         step_no = "14"
         step_name = "Creating producion MD."
 
-        command = self.base_mdrun() + ["-cpo", self.path_state_file()]
+        command = self.base_mdrun()
         if arguments.gpu:
             command += [
                 "-nb", "gpu",
@@ -721,10 +722,11 @@ class GromacsSimulation(object):
             CMD = re.findall("gmx [ \-\d\w/\.]+", content)
 
         chosen = sorted(CMD, key=len, reverse=True)[0]
-        print(chosen)
 
         CMD = chosen.split(" ") + command
         command = " ".join(command)
+
+        print(command)
         self.run_process(
             "15",
             "Resume simulation",
