@@ -10,9 +10,10 @@ import MDAnalysis as mda
 from MDAnalysis.analysis import diffusionmap, align, rms
 
 import numpy.linalg
-
+import seaborn as sns
 import matplotlib.pyplot as plt
 
+sns.set_theme(style="darkgrid")
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -253,6 +254,9 @@ def show_rmsd_series_monolithic(
     for i, vals in enumerate(rmsd_series):
         Xa = vals[0]
         ax.plot(range(len(Xa)), Xa)
+
+    ax.set_xlabel("Frame")
+    ax.set_ylabel("RMSD")
 
     ax.legend(labels)
     plt.tight_layout()
