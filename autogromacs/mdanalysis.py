@@ -171,7 +171,7 @@ def analyzeMD(arguments):
     ] # a selection (AtomGroup)
 
 
-    base_filepath = arguments.WriteOutput
+    base_filepath = "output" if arguments.WriteOutput else None
 
     print("Data loading done.")
     if False:
@@ -188,7 +188,6 @@ def analyzeMD(arguments):
             matrix_filepath = base_filepath + "_matrix.png"
 
         show_matrix(RMSDS, labels, matrix_filepath)
-        
 
     if arguments.DoTimeseries:
         print("Processing timeseries RMSD plots.")
@@ -199,11 +198,14 @@ def analyzeMD(arguments):
         series = list(map(time_series_rms, us))
 
         timeseries_filepath = None
-        if base_filepath:
+        timeseries_mono_filepath = None
+        if base_filepath is not None:
             timeseries_filepath = base_filepath + "_ts.png"
+            timeseries_mono_filepath = base_filepath + "_tsp.png"
 
         show_rmsd_series(series, labels, timeseries_filepath)
-
+        if timeseries_filepath:
+            show_rmsd_series_monolithic(series, labels, timeseries_mono_filepath)
     if False:
         for i, ts in enumerate(us[0].trajectory):
             # iterate through all frames
@@ -240,10 +242,32 @@ def show_matrix(results, labels, filepath: Union[str, None]):
     else:
         plt.show()
 
+        
+def show_rmsd_series_monolithic(
+        rmsd_series: List[List[List[float]]],
+        labels: List[str],
+        filepath: Union[str, None]):
 
-def show_rmsd_series(rmsd_series: List[List[List[float]]],
-                     labels: List[str],
-                     filepath: Union[str, None]):
+    ax = plt.subplot(111)
+
+    for i, vals in enumerate(rmsd_series):
+        Xa = vals[0]
+        ax.plot(range(len(Xa)), Xa)
+
+    ax.legend(labels)
+    plt.tight_layout()
+
+    if filepath is not None:
+        plt.savefig(filepath)
+    else:
+        plt.show()
+
+
+def show_rmsd_series(
+        rmsd_series: List[List[List[float]]],
+        labels: List[str],
+        filepath: Union[str, None]):
+
     X = len(labels)
     ncols = 3
     nrows = round(np.ceil(X / ncols))
