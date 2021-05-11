@@ -26,7 +26,7 @@ def parse_arguments():
     parser.add_argument("-t", dest='TrajSuffix', default="")
     parser.add_argument("-M", dest='DoMatrix', action="store_true")
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
-    parser.add_argument("-w", dest='WriteOutput', default="")
+    parser.add_argument("-w", dest='WriteOutput', action="store_true")
 
     return parser.parse_args()
 
@@ -196,19 +196,41 @@ def analyzeMD(arguments):
             get_label(u)
             for u in us
         ]
-        series = list(map(time_series_rmsd, us))
+        rmsd_series = list(map(time_series_rmsd, us))
 
-        series_rmsf = list(map(time_series_rmsf, us))
+        rmsf_series = list(map(time_series_rmsf, us))
 
-        timeseries_filepath = None
-        timeseries_mono_filepath = None
-        if base_filepath is not None:
-            timeseries_filepath = base_filepath + "_ts.png"
-            timeseries_mono_filepath = base_filepath + "_tsp.png"
+        def build_filepath(base: str, specifiers: List[str]) -> Optional[str]:
+            if not base:
+                if arguments.AutoDetect:
+                    base = arguments.AutoDetect
+                else:
+                    return None
+            return base + "_" + "_".join(specifiers) + ".png"
 
-        show_rmsd_series(series, labels, timeseries_filepath)
-        if timeseries_filepath:
-            show_rmsd_series_monolithic(series, labels, timeseries_mono_filepath)
+        show_rms_series(
+            rmsd_series,
+            labels,
+            build_filepath(base_filepath, ["tsp", "rmsd"])
+        )
+
+        show_rms_series_monolithic(
+            rmsd_series, labels,
+            build_filepath(base_filepath, ["tsmono", "rmsd"])
+        )
+
+        show_rms_series(
+            rmsf_series,
+            labels,
+            build_filepath(base_filepath, ["ts", "rmsf"])
+        )
+
+        show_rms_series_monolithic(
+            rmsf_series,
+            labels,
+            build_filepath(base_filepath, ["tsmono", "rmsf"])
+        )
+
     if False:
         for i, ts in enumerate(us[0].trajectory):
             # iterate through all frames
@@ -246,15 +268,14 @@ def show_matrix(results, labels, filepath: Union[str, None]):
         plt.show()
 
 
-def show_rmsd_series_monolithic(
-        rmsd_series: List[List[float]],
+def show_rms_series_monolithic(
+        rms_series: List[List[float]],
         labels: List[str],
         filepath: Union[str, None]):
 
     ax = plt.subplot(111)
 
-    for i, vals in enumerate(rmsd_series):
-        Xa = vals[0]
+    for i, Xa in enumerate(rms_series):
         ax.plot(range(len(Xa)), Xa)
 
     ax.set_xlabel("Simulation Frame")
@@ -269,8 +290,8 @@ def show_rmsd_series_monolithic(
         plt.show()
 
 
-def show_rmsd_series(
-        rmsd_series: List[List[float]],
+def show_rms_series(
+        rms_series: List[List[float]],
         labels: List[str],
         filepath: Union[str, None]):
 
@@ -283,7 +304,7 @@ def show_rmsd_series(
 
     axk = ax.ravel()
 
-    for i, (vals, label) in enumerate(zip(rmsd_series, labels)):
+    for i, (vals, label) in enumerate(zip(rms_series, labels)):
         Xa = vals
         axk[i].plot(range(len(Xa)), Xa, "b-")
 
@@ -341,13 +362,16 @@ def time_series_rmsd(u, verbose=False) -> List[float]:
     return rmsds
 
 
-def time_series_rmsf(u):
+def time_series_rmsf(u) -> List[float]:
 
     bb = u.select_atoms("backbone")
     w = rms.RMSF(bb).run().rmsf
     print("RMSF")
     print(w.shape)
     print(w)
+
+    return w
+
 
 def plotq(matrix):
     plt.imshow(matrix.dist_matrix, cmap='viridis')
