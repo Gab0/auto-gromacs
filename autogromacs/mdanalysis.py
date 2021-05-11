@@ -14,7 +14,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 sns.set_theme(style="darkgrid")
-
+plt.rcParams["axes.labelsize"] = 15
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 def parse_arguments():
@@ -26,7 +26,7 @@ def parse_arguments():
     parser.add_argument("-t", dest='TrajSuffix', default="")
     parser.add_argument("-M", dest='DoMatrix', action="store_true")
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
-    parser.add_argument("-w", dest='WriteOutput', action="store_true")
+    parser.add_argument("-w", dest='WriteOutput', default="")
 
     return parser.parse_args()
 
@@ -172,7 +172,7 @@ def analyzeMD(arguments):
     ] # a selection (AtomGroup)
 
 
-    base_filepath = "output" if arguments.WriteOutput else None
+    base_filepath = arguments.WriteOutput if arguments.WriteOutput else None
 
     print("Data loading done.")
     if False:
@@ -196,7 +196,9 @@ def analyzeMD(arguments):
             get_label(u)
             for u in us
         ]
-        series = list(map(time_series_rms, us))
+        series = list(map(time_series_rmsd, us))
+
+        series_rmsf = list(map(time_series_rmsf, us))
 
         timeseries_filepath = None
         timeseries_mono_filepath = None
@@ -243,9 +245,9 @@ def show_matrix(results, labels, filepath: Union[str, None]):
     else:
         plt.show()
 
-        
+
 def show_rmsd_series_monolithic(
-        rmsd_series: List[List[List[float]]],
+        rmsd_series: List[List[float]],
         labels: List[str],
         filepath: Union[str, None]):
 
@@ -255,7 +257,7 @@ def show_rmsd_series_monolithic(
         Xa = vals[0]
         ax.plot(range(len(Xa)), Xa)
 
-    ax.set_xlabel("Frame")
+    ax.set_xlabel("Simulation Frame")
     ax.set_ylabel("RMSD")
 
     ax.legend(labels)
@@ -268,7 +270,7 @@ def show_rmsd_series_monolithic(
 
 
 def show_rmsd_series(
-        rmsd_series: List[List[List[float]]],
+        rmsd_series: List[List[float]],
         labels: List[str],
         filepath: Union[str, None]):
 
@@ -282,11 +284,9 @@ def show_rmsd_series(
     axk = ax.ravel()
 
     for i, (vals, label) in enumerate(zip(rmsd_series, labels)):
-        Xa = vals[0]
-        Xb = vals[1]
-
+        Xa = vals
         axk[i].plot(range(len(Xa)), Xa, "b-")
-        axk[i].plot(range(len(Xb)), Xb, "r-")
+
         axk[i].set_title(label)
 
     plt.tight_layout()
@@ -297,7 +297,7 @@ def show_rmsd_series(
         plt.show()
 
 
-def time_series_rms(u, verbose=False):
+def time_series_rmsd(u, verbose=False) -> List[float]:
     rmsds = []
     rmsfs = []
     bb = u.select_atoms("backbone")
@@ -337,14 +337,17 @@ def time_series_rms(u, verbose=False):
             v = rms.rmsd(REF, bb.positions)
             rmsds.append(v)
 
-    #w = rms.RMSF(bb).run().rmsf
-    #print(w.shape)
 
-            #w = np.mean(rms.RMSF(bb).run().rmsf - FREF)
-            #rmsfs.append(w)
+    return rmsds
 
-    return [rmsds, []]
 
+def time_series_rmsf(u):
+
+    bb = u.select_atoms("backbone")
+    w = rms.RMSF(bb).run().rmsf
+    print("RMSF")
+    print(w.shape)
+    print(w)
 
 def plotq(matrix):
     plt.imshow(matrix.dist_matrix, cmap='viridis')
