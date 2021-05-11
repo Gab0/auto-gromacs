@@ -1,5 +1,5 @@
 
-from typing import List, Union
+from typing import List, Union, Optional
 import argparse
 import sys
 import os
@@ -271,15 +271,26 @@ def show_matrix(results, labels, filepath: Union[str, None]):
 def show_rms_series_monolithic(
         rms_series: List[List[float]],
         labels: List[str],
-        filepath: Union[str, None]):
+        filepath: Union[str, None],
+        mode: str):
 
     ax = plt.subplot(111)
 
     for i, Xa in enumerate(rms_series):
         ax.plot(range(len(Xa)), Xa)
 
-    ax.set_xlabel("Simulation Frame")
-    ax.set_ylabel("RMSD")
+    if mode == "RMSD":
+        XL = "Simulation Frame"
+        YL = "RMSD"
+
+    elif mode == "RMSF":
+        XL = "Residue"
+        YL = "RMSF"
+    else:
+        exit(1)
+
+    ax.set_xlabel(XL)
+    ax.set_ylabel(YL)
 
     ax.legend(labels)
     plt.tight_layout()
@@ -293,7 +304,8 @@ def show_rms_series_monolithic(
 def show_rms_series(
         rms_series: List[List[float]],
         labels: List[str],
-        filepath: Union[str, None]):
+        filepath: Union[str, None],
+        mode: str):
 
     X = len(labels)
     ncols = 3
@@ -309,6 +321,18 @@ def show_rms_series(
         axk[i].plot(range(len(Xa)), Xa, "b-")
 
         axk[i].set_title(label)
+
+        if mode == "RMSD":
+            XL = "Frame"
+            YL = "RMSD"
+        elif mode == "RMSF":
+            XL = "Residue"
+            YL = "RMSF"
+        else:
+            exit(1)
+
+        axk[i].set_xlabel(XL)
+        axk[i].set_ylabel(YL)
 
     plt.tight_layout()
 
@@ -363,7 +387,6 @@ def time_series_rmsd(u, verbose=False) -> List[float]:
 
 
 def time_series_rmsf(u) -> List[float]:
-
     bb = u.select_atoms("backbone")
     w = rms.RMSF(bb).run().rmsf
     print("RMSF")
