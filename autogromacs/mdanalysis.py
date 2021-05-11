@@ -17,6 +17,7 @@ sns.set_theme(style="darkgrid")
 plt.rcParams["axes.labelsize"] = 15
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -162,10 +163,11 @@ def analyzeMD(arguments):
     #cterm = u.select_atoms('segid 4AKE and name C')[-1]
 
     for U in us:
-        aligner = align.AlignTraj(U,
-                                  U,
-                                  select='name CA',
-                                  in_memory=True).run()
+        aligner = align.AlignTraj(
+            U,
+            U,
+            select='name CA',
+            in_memory=True).run()
     bb = [
         u.select_atoms('protein and backbone')
         for u in us
@@ -201,34 +203,40 @@ def analyzeMD(arguments):
         rmsf_series = list(map(time_series_rmsf, us))
 
         def build_filepath(base: str, specifiers: List[str]) -> Optional[str]:
-            if not base:
+            if arguments.WriteOutput:
                 if arguments.AutoDetect:
                     base = arguments.AutoDetect
+                    if arguments.FilePrefix:
+                        base += "+"
                 else:
-                    return None
-            return base + "_" + "_".join(specifiers) + ".png"
+                    base = "analysis"
+                return base + "_" + "_".join(specifiers) + ".png"
 
         show_rms_series(
             rmsd_series,
             labels,
-            build_filepath(base_filepath, ["tsp", "rmsd"])
+            build_filepath(base_filepath, ["tsp", "rmsd"]),
+            "RMSD"
         )
 
         show_rms_series_monolithic(
             rmsd_series, labels,
-            build_filepath(base_filepath, ["tsmono", "rmsd"])
+            build_filepath(base_filepath, ["tsmono", "rmsd"]),
+            "RMSD"
         )
 
         show_rms_series(
             rmsf_series,
             labels,
-            build_filepath(base_filepath, ["ts", "rmsf"])
+            build_filepath(base_filepath, ["ts", "rmsf"]),
+            "RMSF"
         )
 
         show_rms_series_monolithic(
             rmsf_series,
             labels,
-            build_filepath(base_filepath, ["tsmono", "rmsf"])
+            build_filepath(base_filepath, ["tsmono", "rmsf"]),
+            "RMSF"
         )
 
     if False:
