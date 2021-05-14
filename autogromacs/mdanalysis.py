@@ -137,10 +137,6 @@ def loadSimulationPrefixes(arguments):
     if arguments.FilePrefix is not None:
         SimulationPrefixes += arguments.FilePrefix
 
-    print("File prefixes used:")
-    for prefix in SimulationPrefixes:
-        print("\t" + prefix)
-
     if not SimulationPrefixes:
         print("FATAL: No prefixes found.")
         sys.exit(1)
@@ -148,39 +144,88 @@ def loadSimulationPrefixes(arguments):
     return SimulationPrefixes
 
 
+def selectSimulationPrefixes(SimulationPrefixes):
+    print("File prefixes found:")
+    for i, prefix in enumerate(SimulationPrefixes):
+        print(f"{i + 1}:\t" + prefix)
+
+    print("Select all or some? (input comma separated numbers)")
+
+    q = input(">")
+
+    q = [v.strip() for v in q.split(",")]
+
+    OutputPrefixes = []
+
+    if not q:
+        return SimulationPrefixes
+
+    else:
+        for v in q:
+            try:
+                V = int(v)
+            except ValueError:
+                print("Invalid input.")
+                exit(1)
+            OutputPrefixes.append(SimulationPrefixes[V -1])
+
+        for prefix in OutputPrefixes:
+            print('\t' + prefix)
+
+        return OutputPrefixes
+
+
+def build_filepath(base: str, specifiers: List[str], arguments) -> Optional[str]:
+    if arguments.WriteOutput:
+        if arguments.AutoDetect:
+            base = arguments.AutoDetect
+            if arguments.FilePrefix:
+                base += "+"
+        else:
+            base = "analysis"
+        return base + "_" + "_".join(specifiers) + ".png"
+
+
+def load_universe(SimulationPrefix, arguments):
+
+    U = MDAnalysis.Universe(
+        SimulationPrefix + ".gro",
+        SimulationPrefix + arguments.TrajSuffix + ".trr"
+    )
+
+    aligner = align.AlignTraj(
+        U,
+        U,
+        select='name CA',
+        in_memory=True
+    ).run()
+
+    bb = U.select_atoms('protein and backbone')
+
+    return U
+
+
 def analyzeMD(arguments):
 
     SimulationPrefixes = loadSimulationPrefixes(arguments)
-
-    us = [
-        MDAnalysis.Universe(FP + ".gro", FP + arguments.TrajSuffix + ".trr")
-        for FP in SimulationPrefixes
-    ]
-
+    SimulationPrefixes = selectSimulationPrefixes(SimulationPrefixes)
+    #us = map(lambda sp: load_universe(sp, arguments), SimulationPrefixes)
     # can access via segid (4AKE) and atom name
     # we take the first atom named N and the last atom named C
     #nterm = u.select_atoms('segid 4AKE and name N')[0]
     #cterm = u.select_atoms('segid 4AKE and name C')[-1]
 
-    for U in us:
-        aligner = align.AlignTraj(
-            U,
-            U,
-            select='name CA',
-            in_memory=True).run()
-    bb = [
-        u.select_atoms('protein and backbone')
-        for u in us
-    ] # a selection (AtomGroup)
-
-
     base_filepath = arguments.WriteOutput if arguments.WriteOutput else None
 
     print("Data loading done.")
+
     if False:
         matrix = diffusionmap.DistanceMatrix(us[0], select='name CA').run()
 
     if arguments.DoMatrix:
+        print("DEPRECATED.")
+        sys.exit(1)
+
         print("Processing pairwise RMSD matrix.")
         POS = RMSDStudy(us, SimulationPrefixes)
         labels = [w.label for w in POS]
@@ -194,23 +239,17 @@ def analyzeMD(arguments):
 
     if arguments.DoTimeseries:
         print("Processing timeseries RMSD plots.")
-        labels = [
-            get_label(u)
-            for u in us
-        ]
-        rmsd_series = list(map(time_series_rmsd, us))
+        labels = []
+        rmsd_series = []
+        rmsf_series = []
 
-        rmsf_series = list(map(time_series_rmsf, us))
+        for SP in SimulationPrefixes:
+            u = load_universe(SP, arguments)
+            labels.append(get_label(u))
+            rmsd_series.append(time_series_rmsd(u))
+            rmsf_series.append(time_series_rmsf(u))
 
-        def build_filepath(base: str, specifiers: List[str]) -> Optional[str]:
-            if arguments.WriteOutput:
-                if arguments.AutoDetect:
-                    base = arguments.AutoDetect
-                    if arguments.FilePrefix:
-                        base += "+"
-                else:
-                    base = "analysis"
-                return base + "_" + "_".join(specifiers) + ".png"
+            del u
 
         show_rms_series(
             rmsd_series,
@@ -287,16 +326,16 @@ def show_rms_series_monolithic(
     for i, Xa in enumerate(rms_series):
         ax.plot(range(len(Xa)), Xa)
 
+    YL = r"Distance ($\AA$)"
     if mode == "RMSD":
         XL = "Simulation Frame"
-        YL = "RMSD"
 
     elif mode == "RMSF":
         XL = "Residue"
-        YL = "RMSF"
     else:
         exit(1)
 
+    ax.title(mode)
     ax.set_xlabel(XL)
     ax.set_ylabel(YL)
 
@@ -330,15 +369,15 @@ def show_rms_series(
 
         axk[i].set_title(label)
 
+        YL = r"Distance ($\AA$)"
         if mode == "RMSD":
             XL = "Frame"
-            YL = "RMSD"
         elif mode == "RMSF":
             XL = "Residue"
-            YL = "RMSF"
         else:
             exit(1)
 
+        axk[i].title(mode)
         axk[i].set_xlabel(XL)
         axk[i].set_ylabel(YL)
 
