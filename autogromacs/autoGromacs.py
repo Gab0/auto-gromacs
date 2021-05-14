@@ -10,6 +10,7 @@ import shutil
 import datetime
 import pathlib
 
+from typing import List, Union
 from .core.messages import welcome_message, backup_folder_already_exists
 from .core import settings
 
@@ -125,9 +126,14 @@ class GromacsSimulation(object):
         pass
 
     @staticmethod
-    def run_process(step_no, step_name, command, log_file=None, Input: str = None):
+    def run_process(step_no, step_name: str,
+                    command: Union[List[str], str],
+                    log_file=None, Input: str = None):
         print("INFO: Attempting to execute " + step_name + \
               " [STEP:" + step_no + "]")
+
+        if isinstance(command, list):
+            command = " ".join(command)
 
         # Assure logging is enabled;
         if ">" not in command and log_file is not None:
@@ -503,8 +509,7 @@ class GromacsSimulation(object):
                 "-p", self.working_dir + "topol.top -pname NA -np",
                 str(-charge),
                 "<< EOF\nSOL\nEOF"
-                ]
-            command = " ".join(command)
+            ]
             self.run_process(step_no, step_name, command)
         elif charge == 0:
             print("System has Neutral charge , No adjustments Required :)")
@@ -569,7 +574,6 @@ class GromacsSimulation(object):
             "-maxwarn 3",
             ">", self.working_dir + "step9.log 2>&1"
         ]
-        command = " ".join(command)
 
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
@@ -748,6 +752,8 @@ class GromacsSimulation(object):
 
         commandA = " ".join(commandA)
 
+        FinalFile = "mdf"
+
         commandB = [
             trjconv,
             "-pbc", "mol",
@@ -761,15 +767,35 @@ class GromacsSimulation(object):
 
         if not self.dummy:
             step_no = "POST_SKIP"
-            self.run_process(step_no, "Skip frames", commandA, self.path_log(step_no))
+            self.run_process(
+                step_no,
+                "Skip frames",
+                commandA,
+                self.path_log(step_no)
+            )
 
             step_no = "POST_PBC"
-            self.run_process(step_no,
-                             "Resolve Periodic Boundary Conditions",
-                             commandB,
-                             self.path_log(step_no),
-                             Input="0"
-                             )
+            self.run_process(
+                step_no,
+                "Resolve Periodic Boundary Conditions",
+                commandB,
+                self.path_log(step_no),
+                Input="0"
+            )
+
+        commandCOV = [
+            "gmx", "covar",
+            "-s", "ref.pdb",
+            "-f", "allpdb_bb.xtc"
+        ]
+
+        commandEIG = [
+            "gmx anaeig",
+            "-s", "ref.pdb",
+            "-f", "allpdb_bb.xtc",
+            "-extr", "extreme1_xray.pdb",
+            "-first", "1", "-last", "1", "-nframes", "30"
+        ]
 
 
 class SessionAction(enum.Enum):
