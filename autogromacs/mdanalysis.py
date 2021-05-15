@@ -3,6 +3,7 @@ from typing import List, Union, Optional
 import argparse
 import sys
 import os
+import re
 import numpy as np
 import warnings
 import MDAnalysis
@@ -89,9 +90,16 @@ def clean_universe_prefix(p: str) -> str:
 def get_label(u: mda.Universe) -> str:
     A = clean_universe_prefix(u.filename)
 
-    t = u.trajectory.totaltime
-    T = "t=%.2fns" % (t / 1000)
-    return A + " " + T
+    if False:
+        t = u.trajectory.totaltime
+        T = "t=%.2fns" % (t / 1000)
+        return A + " " + T
+    else:
+        NB = int(re.findall("mutation(\d)", A)[0])
+        if NB == 0:
+            return "Original"
+        else:
+            return f"Variação #{NB}"
 
 
 def RMSDStudy(us, unames):
@@ -324,7 +332,7 @@ def show_rms_series_monolithic(
 
     fig, ax = plt.subplots()
 
-    fig.set_width(9.6)
+    fig.set_figwidth(9.6)
 
     for i, Xa in enumerate(rms_series):
         ax.plot(range(len(Xa)), Xa)
@@ -363,8 +371,6 @@ def show_rms_series(
 
     assert(ncols * nrows >= X)
     fig, ax = plt.subplots(nrows, ncols)
-
-    fig.figsize = [9.6, 4.8]
 
     axk = ax.ravel()
 
