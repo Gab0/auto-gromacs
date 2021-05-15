@@ -254,27 +254,27 @@ def analyzeMD(arguments):
         show_rms_series(
             rmsd_series,
             labels,
-            build_filepath(base_filepath, ["tsp", "rmsd"]),
+            build_filepath(base_filepath, ["tsp", "rmsd"], arguments),
             "RMSD"
         )
 
         show_rms_series_monolithic(
             rmsd_series, labels,
-            build_filepath(base_filepath, ["tsmono", "rmsd"]),
+            build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
             "RMSD"
         )
 
         show_rms_series(
             rmsf_series,
             labels,
-            build_filepath(base_filepath, ["ts", "rmsf"]),
+            build_filepath(base_filepath, ["ts", "rmsf"], arguments),
             "RMSF"
         )
 
         show_rms_series_monolithic(
             rmsf_series,
             labels,
-            build_filepath(base_filepath, ["tsmono", "rmsf"]),
+            build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
             "RMSF"
         )
 
@@ -295,6 +295,7 @@ def analyzeMD(arguments):
 
 def show_matrix(results, labels, filepath: Union[str, None]):
     fig, ax = plt.subplots()
+
     im = ax.imshow(results, cmap='viridis')
 
     fig.colorbar(im, ax=ax, label=r'RMSD ($\AA$)')
@@ -321,21 +322,23 @@ def show_rms_series_monolithic(
         filepath: Union[str, None],
         mode: str):
 
-    ax = plt.subplot(111)
+    fig, ax = plt.subplots()
+
+    fig.set_width(9.6)
 
     for i, Xa in enumerate(rms_series):
         ax.plot(range(len(Xa)), Xa)
 
-    YL = r"Distance ($\AA$)"
+    YL = r"Distância ($\AA$)"
     if mode == "RMSD":
-        XL = "Simulation Frame"
+        XL = "Frame"
 
     elif mode == "RMSF":
         XL = "Residue"
     else:
         exit(1)
 
-    ax.title(mode)
+    ax.set_title(mode)
     ax.set_xlabel(XL)
     ax.set_ylabel(YL)
 
@@ -361,6 +364,8 @@ def show_rms_series(
     assert(ncols * nrows >= X)
     fig, ax = plt.subplots(nrows, ncols)
 
+    fig.figsize = [9.6, 4.8]
+
     axk = ax.ravel()
 
     for i, (vals, label) in enumerate(zip(rms_series, labels)):
@@ -369,7 +374,7 @@ def show_rms_series(
 
         axk[i].set_title(label)
 
-        YL = r"Distance ($\AA$)"
+        YL = r"Distância ($\AA$)"
         if mode == "RMSD":
             XL = "Frame"
         elif mode == "RMSF":
@@ -377,10 +382,10 @@ def show_rms_series(
         else:
             exit(1)
 
-        axk[i].title(mode)
         axk[i].set_xlabel(XL)
         axk[i].set_ylabel(YL)
 
+    plt.title(mode)
     plt.tight_layout()
 
     if filepath is not None:
