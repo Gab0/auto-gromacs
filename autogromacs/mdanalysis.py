@@ -346,7 +346,7 @@ def show_rms_series_monolithic(
     else:
         exit(1)
 
-    ax.set_title(mode)
+    #ax.set_title(mode)
     ax.set_xlabel(XL)
     ax.set_ylabel(YL)
 
@@ -391,7 +391,7 @@ def show_rms_series(
         axk[i].set_xlabel(XL)
         axk[i].set_ylabel(YL)
 
-    plt.title(mode)
+    # plt.title(mode)
     plt.tight_layout()
 
     if filepath is not None:
