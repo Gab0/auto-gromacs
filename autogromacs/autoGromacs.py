@@ -542,11 +542,7 @@ class GromacsSimulation(object):
         step_no = "8"
         step_name = " Minimisation"
 
-        command = mdrun + " -v  -s " + self.working_dir + "em.tpr -c " + \
-            self.working_dir + "em.gro -o " + self.working_dir + \
-            "em.trr -e " + self.working_dir + "em.edr -x " + \
-            self.working_dir + "em.xtc -g " + self.working_dir + \
-            "em.log > " + self.working_dir + "step8.log 2>&1"
+        command = self.base_mdrun("em")
 
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
@@ -580,16 +576,9 @@ class GromacsSimulation(object):
 
         step_no = "10"
         step_name = "NVT Equilibration"
-        command = mdrun + " -v"+\
-                  " -s " + self.working_dir + "nvt.tpr"+\
-                  " -c " + self.working_dir + "nvt.gro"+\
-                  " -o " + self.working_dir + "nvt.trr"+\
-                  " -e " + self.working_dir + "nvt.edr"+\
-                  " -x " + self.working_dir + "nvt.xtc"+\
-                  " -g " + self.working_dir + "nvt.log"+\
-                  " -deffnm " + self.working_dir + "nvt"+\
-                  " > " + self.working_dir + "step10.log 2>&1"
-        # command = "gmx mdrun -deffnm nvt > step10.log 2>&1"
+        command = self.base_mdrun("nvt")
+        command +=  ["-deffnm", self.working_dir + "nvt"]
+
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
 
@@ -620,11 +609,7 @@ class GromacsSimulation(object):
 
         step_no = "12"
         step_name = "NPT Equilibration"
-        command = mdrun + " -v  -s " + self.working_dir + "npt.tpr -c " + \
-            self.working_dir + "npt.gro -o " + self.working_dir + \
-            "npt.trr -e " + self.working_dir + "npt.edr -x " + \
-            self.working_dir + "npt.xtc -g " + self.working_dir + "npt.log > "\
-            + self.working_dir + "step12.log 2>&1"
+        command = self.base_mdrun("npt")
 
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
@@ -654,19 +639,28 @@ class GromacsSimulation(object):
             self.run_process(step_no, step_name, command, self.path_log(step_no))
 
 
-    def base_mdrun(self):
+    def base_mdrun(self, file_prefix="md"):
         mdrun = settings.g_prefix + "mdrun"
-        return [
-            mdrun, "-v",
-            "-s", self.working_dir + "md.tpr",
-            "-c", self.working_dir + "md.gro",
-            "-o", self.working_dir + "md.trr",
-            "-e", self.working_dir + "md.edr",
-            "-x", self.working_dir + "md.xtc",
-            "-g", self.working_dir + "md.log",
+
+        mdrun_arguments_extensions = {
+            "-s": ".tpr",
+            "-c": ".gro",
+            "-o": ".trr",
+            "-e": ".edr",
+            "-x": ".xtc",
+            "-g": ".log"
+        }
+
+        arguments = [mdrun, "-v"]
+
+        for arg, ext in mdrun_arguments_extensions.items():
+            arguments += [arg, self.to_wd(file_prefix + ext)]
+
+        arguments += [
             "-cpo", self.path_state_file()
         ]
 
+        return arguments
 
     def md(self, arguments):
         print(">STEP14: Simulation stared for %s" % self.protein_file_path)
