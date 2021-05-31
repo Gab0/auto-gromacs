@@ -46,7 +46,7 @@ def autodetect_files(root_path, pattern="md.gro") -> List[str]:
             elif f.endswith(pattern):
                 yield file_to_prefix(F)
 
-    return list(detect(root_path))
+    return list(sorted(detect(root_path)))
 
 
 class Positions():
@@ -94,12 +94,17 @@ def get_label(u: mda.Universe) -> str:
         t = u.trajectory.totaltime
         T = "t=%.2fns" % (t / 1000)
         return A + " " + T
+
     else:
-        NB = int(re.findall("mutation(\d)", A)[0])
-        if NB == 0:
-            return "Original"
-        else:
-            return f"Variação #{NB}"
+        return process_simulation_name(A)
+
+
+def process_simulation_name(name: str) -> str:
+    NB = int(re.findall(r"\d+", name)[0])
+    if NB == 0:
+        return "Original"
+
+    return f"Variação #{NB}"
 
 
 def RMSDStudy(us, unames):
@@ -157,7 +162,7 @@ def selectSimulationPrefixes(SimulationPrefixes):
     for i, prefix in enumerate(SimulationPrefixes):
         print(f"{i + 1}:\t" + prefix)
 
-    print("Select all or some? (input comma separated numbers)")
+    print("Select all or some? (input comma separated numbers and dash separated intervals)")
 
     q = input(">")
 
@@ -168,19 +173,27 @@ def selectSimulationPrefixes(SimulationPrefixes):
     if not q:
         return SimulationPrefixes
 
-    else:
-        for v in q:
-            try:
-                V = int(v)
-            except ValueError:
-                print("Invalid input.")
-                exit(1)
-            OutputPrefixes.append(SimulationPrefixes[V -1])
+    for v in q:
+        try:
+            if "-" in v:
+                limits = v.split("-")
+                assert len(limits) == 2
+                F, T = [int(k) for k in limits]
+                V = list(range(F, T + 1))
+            else:
+                V = [int(v)]
 
-        for prefix in OutputPrefixes:
-            print('\t' + prefix)
+        except (ValueError, AssertionError):
+            print("Invalid input.")
+            exit(1)
 
-        return OutputPrefixes
+        for prefix_idx in V:
+            OutputPrefixes.append(SimulationPrefixes[prefix_idx -1])
+
+    for prefix in OutputPrefixes:
+        print('\t' + prefix)
+
+    return OutputPrefixes
 
 
 def build_filepath(base: str, specifiers: List[str], arguments) -> Optional[str]:
