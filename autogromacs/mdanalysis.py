@@ -214,14 +214,12 @@ def load_universe(SimulationPrefix, arguments):
         SimulationPrefix + arguments.TrajSuffix + ".trr"
     )
 
-    aligner = align.AlignTraj(
+    align.AlignTraj(
         U,
         U,
         select='name CA',
         in_memory=True
     ).run()
-
-    bb = U.select_atoms('protein and backbone')
 
     return U
 
@@ -264,12 +262,14 @@ def analyzeMD(arguments):
         rmsd_series = []
         rmsf_series = []
 
-        for SP in SimulationPrefixes:
+        for i, SP in enumerate(SimulationPrefixes):
+            print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
             u = load_universe(SP, arguments)
             labels.append(get_label(u))
             rmsd_series.append(time_series_rmsd(u))
             rmsf_series.append(time_series_rmsf(u))
 
+            u.trajectory.close()
             del u
 
         show_rms_series(
@@ -298,20 +298,6 @@ def analyzeMD(arguments):
             build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
             "RMSF"
         )
-
-    if False:
-        for i, ts in enumerate(us[0].trajectory):
-            # iterate through all frames
-            #r = cterm.position - nterm.position
-            # end-to-end vector from atom positions
-            print(dir(ts))
-            print(ts.positions)
-            print(i)
-    #r = bb.position
-    #d = numpy.linalg.norm(r)  # end-to-end distance
-    #rgyr = bb.radius_of_gyration()  # method of AtomGroup
-    #print("frame = {0}: d = {1} A, Rgyr = {2} A".format(
-    #      ts.frame, d, rgyr))
 
 
 def show_matrix(results, labels, filepath: Union[str, None]):
@@ -434,7 +420,7 @@ def time_series_rmsd(u, verbose=False) -> List[float]:
                 order="afc"
             )
 
-            aligner = align.AlignTraj(
+            align.AlignTraj(
                 u,
                 ref,
                 select="protein and name CA",
@@ -453,18 +439,12 @@ def time_series_rmsd(u, verbose=False) -> List[float]:
             v = rms.rmsd(REF, bb.positions)
             rmsds.append(v)
 
-
     return rmsds
 
 
 def time_series_rmsf(u) -> List[float]:
     bb = u.select_atoms("backbone")
-    w = rms.RMSF(bb).run().rmsf
-    print("RMSF")
-    print(w.shape)
-    print(w)
-
-    return w
+    return rms.RMSF(bb).run().rmsf
 
 
 def plotq(matrix):
