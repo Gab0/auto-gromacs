@@ -100,8 +100,8 @@ def get_label(u: mda.Universe) -> str:
 
 
 def process_simulation_name(name: str) -> str:
-    NB = int(re.findall(r"\d+", name)[0])
-    if NB == 0:
+    NB = re.findall(r"\d+-{0,1}\d*", name)[0]
+    if NB == "0":
         return "Original"
 
     return f"Variação #{NB}"
@@ -114,14 +114,12 @@ def RMSDStudy(us, unames):
     ATOM_ID = "name CA"
     ATOM_ID = "backbone"
 
-    Data = []
     for i, universe in enumerate(us):
         bb = universe.select_atoms(ATOM_ID)
         for j in traj_idx:
             universe.trajectory[j]
             w = Positions(bb.positions.copy(), unames[i], j)
             POS.append(w)
-
 
     return POS
 
