@@ -404,7 +404,6 @@ def show_rms_series(
 
 def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
     rmsds = []
-    rmsfs = []
     bb = u.select_atoms("backbone")
 
     J = len(u.trajectory)
@@ -413,7 +412,6 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
         if t == 0:
             REF = bb.positions.copy()
 
-            #FREF = rms.RMSF(bb).run().rmsf
             if arguments.ReferenceMean:
                 ref_coordinates = u.trajectory.timeseries(asel=bb).mean(axis=1)
             else:
