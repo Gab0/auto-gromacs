@@ -132,6 +132,7 @@ class GromacsSimulation(object):
         print("INFO: Attempting to execute " + step_name + \
               " [STEP:" + step_no + "]")
 
+
         if isinstance(command, list):
             command = " ".join(command)
 
@@ -141,6 +142,9 @@ class GromacsSimulation(object):
 
         if bashlog is not None:
             bashlog.write("%s\n" % command)
+
+        if self.dummy:
+            return
 
         ret = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
 
@@ -635,9 +639,8 @@ class GromacsSimulation(object):
         ]
 
         command = " ".join(command)
-        if not self.dummy:
-            self.run_process(step_no, step_name, command, self.path_log(step_no))
 
+        self.run_process(step_no, step_name, command, self.path_log(step_no))
 
     def base_mdrun(self, file_prefix="md"):
         mdrun = settings.g_prefix + "mdrun"
@@ -682,13 +685,12 @@ class GromacsSimulation(object):
         if not arguments.dummy:
             self.run_process(step_no, step_name, command, log_file)
 
-
     def continue_mdrun(self, arguments):
         critical_file = self.path_state_file()
         simulation_log = self.path_log("14")
 
         grompp = settings.g_prefix + "grompp"
-        step_no = "15"
+        step_no = "14"
         log_file = self.path_log(step_no)
 
         if arguments.refresh_mdp:
@@ -701,14 +703,13 @@ class GromacsSimulation(object):
                 "-t", self.path_state_file()
             ]
 
-            step_no = "15.1"
+            step_no = "14.1"
             self.run_process(step_no, "Update simulation", " ".join(GP),
                              self.path_log(step_no))
 
         if not os.path.isfile(critical_file):
             print(f"RESUME {critical_file} FILE NOT FOUND.")
             return None
-
 
         command = self.base_mdrun() + [
             "-cpi", critical_file,
@@ -944,7 +945,6 @@ def run_pipeline(arguments):
         obj.postprocess
     ]
 
-
     if Action == SessionAction.Resume:
         STEPS = STEPS_RESUME + STEPS_POSTPROCESS
 
@@ -961,7 +961,6 @@ def run_pipeline(arguments):
 
     elif Action == SessionAction.New:
         STEPS = STEPS_GATHER + STEPS_PREPARE + STEPS_EXECUTE + STEPS_POSTPROCESS
-
 
     for STEP in STEPS:
         now = datetime.datetime.now().strftime("%H:%M:%S")
