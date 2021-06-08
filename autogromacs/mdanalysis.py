@@ -30,6 +30,8 @@ def parse_arguments():
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
     parser.add_argument("-w", dest='WriteOutput', action="store_true")
 
+    parser.add_arguments('-m', dest='ReferenceMean', action="store_true")
+
     return parser.parse_args()
 
 
@@ -64,15 +66,15 @@ class Positions():
         ])
 
 
-def index_label(l: int) -> str:
+def index_label(label_id: int) -> str:
     common = {
         0: "initial",
         -1: "last"
     }
     try:
-        return common[l]
+        return common[label_id]
     except KeyError:
-        return str(l)
+        return str(label_id)
 
 
 def clean_universe_prefix(p: str) -> str:
@@ -186,7 +188,7 @@ def selectSimulationPrefixes(SimulationPrefixes):
             exit(1)
 
         for prefix_idx in V:
-            OutputPrefixes.append(SimulationPrefixes[prefix_idx -1])
+            OutputPrefixes.append(SimulationPrefixes[prefix_idx - 1])
 
     for prefix in OutputPrefixes:
         print('\t' + prefix)
@@ -194,7 +196,10 @@ def selectSimulationPrefixes(SimulationPrefixes):
     return OutputPrefixes
 
 
-def build_filepath(base: str, specifiers: List[str], arguments) -> Optional[str]:
+def build_filepath(
+        base: str,
+        specifiers: List[str],
+        arguments) -> Optional[str]:
     if arguments.WriteOutput:
         if arguments.AutoDetect:
             base = arguments.AutoDetect
@@ -264,7 +269,7 @@ def analyzeMD(arguments):
             print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
             u = load_universe(SP, arguments)
             labels.append(get_label(u))
-            rmsd_series.append(time_series_rmsd(u))
+            rmsd_series.append(time_series_rmsd(u, arguments))
             rmsf_series.append(time_series_rmsf(u))
 
             u.trajectory.close()
@@ -308,7 +313,7 @@ def show_matrix(results, labels, filepath: Union[str, None]):
     U = np.arange(len(labels))
     ax.set_yticks(U)
     plt.xticks(range(len(results)), labels, rotation='vertical')
-    #ax.set_xticks(U, rotation='vertical')
+    # ax.set_xticks(U, rotation='vertical')
     # ... and label them with the respective list entries
     ax.set_yticklabels(labels)
     ax.set_xticklabels(labels)
@@ -343,7 +348,7 @@ def show_rms_series_monolithic(
     else:
         exit(1)
 
-    #ax.set_title(mode)
+    # ax.set_title(mode)
     ax.set_xlabel(XL)
     ax.set_ylabel(YL)
 
@@ -397,7 +402,7 @@ def show_rms_series(
         plt.show()
 
 
-def time_series_rmsd(u, verbose=False) -> List[float]:
+def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
     rmsds = []
     rmsfs = []
     bb = u.select_atoms("backbone")
@@ -409,7 +414,10 @@ def time_series_rmsd(u, verbose=False) -> List[float]:
             REF = bb.positions.copy()
 
             #FREF = rms.RMSF(bb).run().rmsf
-            ref_coordinates = u.trajectory.timeseries(asel=bb).mean(axis=1)
+            if arguments.ReferenceMean:
+                ref_coordinates = u.trajectory.timeseries(asel=bb).mean(axis=1)
+            else:
+                ref_coordinates = u.trajectory.timeseries(asel=bb)[0]
 
             # Make a reference structure (need to reshape into a
             # 1-frame "trajectory").
