@@ -30,7 +30,7 @@ def parse_arguments():
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
     parser.add_argument("-w", dest='WriteOutput', action="store_true")
 
-    parser.add_arguments('-m', dest='ReferenceMean', action="store_true")
+    parser.add_argument('-m', dest='ReferenceMean', action="store_true")
 
     return parser.parse_args()
 

@@ -125,13 +125,11 @@ class GromacsSimulation(object):
     def exit_program(self):
         pass
 
-    @staticmethod
-    def run_process(step_no, step_name: str,
+    def run_process(self, step_no, step_name: str,
                     command: Union[List[str], str],
                     log_file=None, Input: str = None):
         print("INFO: Attempting to execute " + step_name + \
               " [STEP:" + step_no + "]")
-
 
         if isinstance(command, list):
             command = " ".join(command)
@@ -155,7 +153,6 @@ class GromacsSimulation(object):
         ret.wait()
 
         handle_error(ret.returncode, step_no, log_file)
-
 
     def build_settings_summary(self, arguments):
         settings_file = "settings.csv"
