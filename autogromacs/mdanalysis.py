@@ -1,5 +1,5 @@
 
-from typing import List, Union, Optional
+from typing import List, Union, Optional, cast
 import argparse
 import sys
 import os
@@ -8,7 +8,7 @@ import numpy as np
 import warnings
 import MDAnalysis
 import MDAnalysis as mda
-from MDAnalysis.analysis import diffusionmap, align, rms
+from MDAnalysis.analysis import align, rms, pca
 
 import numpy.linalg
 import seaborn as sns
@@ -32,6 +32,7 @@ def parse_arguments():
 
     parser.add_argument('-m', dest='ReferenceMean', action="store_true")
 
+    parser.add_argument('-s', dest='SimulationSelection')
     return parser.parse_args()
 
 
@@ -157,7 +158,7 @@ def loadSimulationPrefixes(arguments):
     return SimulationPrefixes
 
 
-def selectSimulationPrefixes(SimulationPrefixes):
+def ask_simulation_prefixes(SimulationPrefixes):
     print("File prefixes found:")
     for i, prefix in enumerate(SimulationPrefixes):
         print(f"{i + 1}:\t" + prefix)
@@ -166,11 +167,13 @@ def selectSimulationPrefixes(SimulationPrefixes):
     print("Or input comma separated numbers and " +
           "dash separated intervals to select prefixes.")
 
-    q = input(">")
+    return input(">")
 
+
+def select_simulation_prefixes(SimulationPrefixes, input_string):
     q = [
         v.strip()
-        for v in q.split(",")
+        for v in input_string.split(",")
     ]
 
     OutputPrefixes = []
@@ -189,8 +192,7 @@ def selectSimulationPrefixes(SimulationPrefixes):
                 V = [int(v)]
 
         except (ValueError, AssertionError):
-            print("Invalid input.")
-            exit(1)
+            raise Exception("Invalid input.")
 
         for prefix_idx in V:
             OutputPrefixes.append(SimulationPrefixes[prefix_idx - 1])
@@ -238,7 +240,16 @@ def load_universe(SimulationPrefix, arguments):
 def analyzeMD(arguments):
 
     SimulationPrefixes = loadSimulationPrefixes(arguments)
-    SimulationPrefixes = selectSimulationPrefixes(SimulationPrefixes)
+
+    if arguments.SimulationSelection:
+        user_input = arguments.SimulationSelection
+    else:
+        user_input = ask_simulation_prefixes(SimulationPrefixes)
+
+    SimulationPrefixes = select_simulation_prefixes(
+        SimulationPrefixes,
+        user_input
+    )
 
     # us = map(lambda sp: load_universe(sp, arguments), SimulationPrefixes)
     # can access via segid (4AKE) and atom name
@@ -332,13 +343,13 @@ def show_rms_series_monolithic(
         ax.plot(range(len(Xa)), Xa)
 
     YL = r"Distância ($\AA$)"
-    if mode == "RMSD":
+    if mode.startswith("RMSD"):
         XL = "Frame"
 
     elif mode == "RMSF":
         XL = "Residue"
     else:
-        exit(1)
+        raise Exception("Unknown plot identifier.")
 
     # ax.set_title(mode)
     ax.set_xlabel(XL)
@@ -370,13 +381,16 @@ def show_rms_series(
         mode: str):
 
     N = len(labels)
-    ncols = 3
+    ncols = 1
     nrows = round(np.ceil(N / ncols))
 
     assert ncols * nrows >= N
     fig, ax = plt.subplots(nrows, ncols)
 
-    axk = ax.ravel()
+    try:
+        axk = ax.ravel()
+    except AttributeError:
+        axk = [ax]
 
     for i, (vals, label) in enumerate(zip(rms_series, labels)):
 
@@ -387,7 +401,7 @@ def show_rms_series(
         if mode == "RMSDf":
             XL = "Frame"
         elif mode == "RMSDt":
-            XL = "Time (ns)"
+            XL = "Tempo (ns)"
             X = frames_to_time(X, 64)
         elif mode == "RMSF":
             XL = "Residue"
@@ -395,11 +409,10 @@ def show_rms_series(
             exit(1)
 
         axk[i].plot(X, Y, "b-")
-
         axk[i].set_title(label)
 
-        axk[i].set_xlabel(XL)
-        axk[i].set_ylabel(YL)
+    fig.text(0.5, 0.01, XL, ha='center')
+    fig.text(0.002, 0.5, YL, va='center', rotation='vertical')
 
     # plt.title(mode)
     plt.tight_layout()
@@ -418,12 +431,13 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
 
     for t, traj in enumerate(u.trajectory):
         if t == 0:
-            REF = bb.positions.copy()
 
             if arguments.ReferenceMean:
                 ref_coordinates = u.trajectory.timeseries(asel=bb).mean(axis=1)
+                REF = ref_coordinates.positions.copy()
             else:
                 ref_coordinates = u.trajectory.timeseries(asel=bb)[:, 0, :]
+                REF = ref_coordinates.copy()
 
             # Make a reference structure (need to reshape into a
             # 1-frame "trajectory").
@@ -451,13 +465,20 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
             v = rms.rmsd(REF, bb.positions)
             rmsds.append(v)
 
+    os.remove("rmsfit.xtc")
+
     return rmsds
 
 
 def time_series_rmsf(u, end_pct=100) -> List[float]:
     sel = "protein and name CA"
     c_alphas = u.select_atoms(sel)
-    return rms.RMSF(c_alphas).run().rmsf
+    return cast(List[float], rms.RMSF(c_alphas).run().rmsf)
+
+
+def analyze_pca(u: mda.Universe):
+    PCA = pca.PCA(u, select='backbone')
+    PCA.run()
 
 
 def plotq(matrix):
