@@ -715,7 +715,7 @@ class GromacsSimulation(object):
 
         with open(simulation_log) as f:
             content = f.read()
-            CMD = re.findall("gmx [ \-\d\w/\.]+", content)
+            CMD = re.findall(r"gmx [ \-\d\w/\.]+", content)
 
         chosen = sorted(CMD, key=len, reverse=True)[0]
 
@@ -724,7 +724,7 @@ class GromacsSimulation(object):
 
         print(command)
         self.run_process(
-            "15",
+            step_no,
             "Resume simulation",
             command,
             log_file
@@ -752,7 +752,7 @@ class GromacsSimulation(object):
             "-ur", "compact",
             "-f", self.to_wd("md5.trr"),
             "-s", self.to_wd("md.tpr"),
-            "-o", self.to_wd("mdf.trr")
+            "-o", self.to_wd(FinalFile + ".trr")
         ]
 
         commandB = " ".join(commandB)
@@ -775,6 +775,7 @@ class GromacsSimulation(object):
                 Input="0"
             )
 
+    def pca(self):
         commandCOV = [
             "gmx", "covar",
             "-s", "ref.pdb",
