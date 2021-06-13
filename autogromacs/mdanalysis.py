@@ -208,7 +208,7 @@ def build_filepath(
 
     if arguments.WriteOutput:
         if arguments.AutoDetect:
-            base = arguments.AutoDetect
+            base = arguments.AutoDetect[0]
             if arguments.FilePrefix:
                 base += "+"
         else:
