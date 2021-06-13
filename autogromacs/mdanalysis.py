@@ -23,7 +23,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-f", dest='FilePrefix', nargs="*")
-    parser.add_argument("-d", dest='AutoDetect')
+    parser.add_argument("-d", dest='AutoDetect', nargs="*")
 
     parser.add_argument("-t", dest='TrajSuffix', default="")
     parser.add_argument("-M", dest='DoMatrix', action="store_true")
@@ -144,8 +144,8 @@ def pairwise_rmsds(POS):
 def loadSimulationPrefixes(arguments):
 
     SimulationPrefixes = []
-    if arguments.AutoDetect:
-        SimulationPrefixes = autodetect_files(arguments.AutoDetect)
+    for AutoDetectDir in arguments.AutoDetect:
+        SimulationPrefixes += autodetect_files(AutoDetectDir)
 
     if arguments.FilePrefix is not None:
         SimulationPrefixes += arguments.FilePrefix
@@ -162,11 +162,16 @@ def selectSimulationPrefixes(SimulationPrefixes):
     for i, prefix in enumerate(SimulationPrefixes):
         print(f"{i + 1}:\t" + prefix)
 
-    print("Select all or some? (input comma separated numbers and dash separated intervals)")
+    print("Select all prefixes? (empty input)")
+    print("Or input comma separated numbers and " +
+          "dash separated intervals to select prefixes.")
 
     q = input(">")
 
-    q = [v.strip() for v in q.split(",")]
+    q = [
+        v.strip()
+        for v in q.split(",")
+    ]
 
     OutputPrefixes = []
 
@@ -200,6 +205,7 @@ def build_filepath(
         base: str,
         specifiers: List[str],
         arguments) -> Optional[str]:
+
     if arguments.WriteOutput:
         if arguments.AutoDetect:
             base = arguments.AutoDetect
@@ -208,6 +214,8 @@ def build_filepath(
         else:
             base = "analysis"
         return base + "_" + "_".join(specifiers) + ".png"
+
+    return None
 
 
 def load_universe(SimulationPrefix, arguments):
@@ -231,33 +239,16 @@ def analyzeMD(arguments):
 
     SimulationPrefixes = loadSimulationPrefixes(arguments)
     SimulationPrefixes = selectSimulationPrefixes(SimulationPrefixes)
-    #us = map(lambda sp: load_universe(sp, arguments), SimulationPrefixes)
+
+    # us = map(lambda sp: load_universe(sp, arguments), SimulationPrefixes)
     # can access via segid (4AKE) and atom name
     # we take the first atom named N and the last atom named C
-    #nterm = u.select_atoms('segid 4AKE and name N')[0]
-    #cterm = u.select_atoms('segid 4AKE and name C')[-1]
+    # nterm = u.select_atoms('segid 4AKE and name N')[0]
+    # cterm = u.select_atoms('segid 4AKE and name C')[-1]
 
     base_filepath = arguments.WriteOutput if arguments.WriteOutput else None
 
     print("Data loading done.")
-
-    if False:
-        matrix = diffusionmap.DistanceMatrix(us[0], select='name CA').run()
-
-    if arguments.DoMatrix:
-        print("DEPRECATED.")
-        sys.exit(1)
-
-        print("Processing pairwise RMSD matrix.")
-        POS = RMSDStudy(us, SimulationPrefixes)
-        labels = [w.label for w in POS]
-        RMSDS = pairwise_rmsds(POS)
-
-        matrix_filepath = None
-        if base_filepath is not None:
-            matrix_filepath = base_filepath + "_matrix.png"
-
-        show_matrix(RMSDS, labels, matrix_filepath)
 
     if arguments.DoTimeseries:
         print("Processing timeseries RMSD plots.")
@@ -279,13 +270,13 @@ def analyzeMD(arguments):
             rmsd_series,
             labels,
             build_filepath(base_filepath, ["tsp", "rmsd"], arguments),
-            "RMSD"
+            "RMSDt"
         )
 
         show_rms_series_monolithic(
             rmsd_series, labels,
             build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
-            "RMSD"
+            "RMSDt"
         )
 
         show_rms_series(
@@ -313,6 +304,7 @@ def show_matrix(results, labels, filepath: Union[str, None]):
     U = np.arange(len(labels))
     ax.set_yticks(U)
     plt.xticks(range(len(results)), labels, rotation='vertical')
+
     # ax.set_xticks(U, rotation='vertical')
     # ... and label them with the respective list entries
     ax.set_yticklabels(labels)
@@ -361,34 +353,50 @@ def show_rms_series_monolithic(
         plt.show()
 
 
+def frames_to_time(frames: Union[List[float], List[int]],
+                   total_time: int) -> List[float]:
+    total_frames = frames[-1]
+
+    def to_t(v: Union[int, float]) -> float:
+        return v / total_frames * total_time
+
+    return list(map(to_t, frames))
+
+
 def show_rms_series(
         rms_series: List[List[float]],
         labels: List[str],
         filepath: Union[str, None],
         mode: str):
 
-    X = len(labels)
+    N = len(labels)
     ncols = 3
-    nrows = round(np.ceil(X / ncols))
+    nrows = round(np.ceil(N / ncols))
 
-    assert(ncols * nrows >= X)
+    assert ncols * nrows >= N
     fig, ax = plt.subplots(nrows, ncols)
 
     axk = ax.ravel()
 
     for i, (vals, label) in enumerate(zip(rms_series, labels)):
-        Xa = vals
-        axk[i].plot(range(len(Xa)), Xa, "b-")
 
-        axk[i].set_title(label)
+        Y = vals
+        X: Union[List[float], List[int]] = list(range(len(Y)))
 
         YL = r"Distância ($\AA$)"
-        if mode == "RMSD":
+        if mode == "RMSDf":
             XL = "Frame"
+        elif mode == "RMSDt":
+            XL = "Time (ns)"
+            X = frames_to_time(X, 64)
         elif mode == "RMSF":
             XL = "Residue"
         else:
             exit(1)
+
+        axk[i].plot(X, Y, "b-")
+
+        axk[i].set_title(label)
 
         axk[i].set_xlabel(XL)
         axk[i].set_ylabel(YL)
@@ -415,7 +423,7 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
             if arguments.ReferenceMean:
                 ref_coordinates = u.trajectory.timeseries(asel=bb).mean(axis=1)
             else:
-                ref_coordinates = u.trajectory.timeseries(asel=bb)[0]
+                ref_coordinates = u.trajectory.timeseries(asel=bb)[:, 0, :]
 
             # Make a reference structure (need to reshape into a
             # 1-frame "trajectory").
@@ -446,9 +454,10 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
     return rmsds
 
 
-def time_series_rmsf(u) -> List[float]:
-    bb = u.select_atoms("backbone")
-    return rms.RMSF(bb).run().rmsf
+def time_series_rmsf(u, end_pct=100) -> List[float]:
+    sel = "protein and name CA"
+    c_alphas = u.select_atoms(sel)
+    return rms.RMSF(c_alphas).run().rmsf
 
 
 def plotq(matrix):
@@ -467,4 +476,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
