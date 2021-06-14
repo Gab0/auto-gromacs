@@ -1,12 +1,13 @@
 
 from typing import List, Union, Optional, cast
+import enum
 import argparse
 import sys
 import os
 import re
 import numpy as np
 import warnings
-import MDAnalysis
+
 import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca
 
@@ -222,7 +223,7 @@ def build_filepath(
 
 def load_universe(SimulationPrefix, arguments):
 
-    U = MDAnalysis.Universe(
+    U = mda.Universe(
         SimulationPrefix + ".gro",
         SimulationPrefix + arguments.TrajSuffix + ".trr"
     )
@@ -274,6 +275,7 @@ def analyzeMD(arguments):
             rmsd_series.append(time_series_rmsd(u, arguments))
             rmsf_series.append(time_series_rmsf(u))
 
+            analyze_pca(u)
             u.trajectory.close()
             del u
 
@@ -412,7 +414,7 @@ def show_rms_series(
         axk[i].set_title(label)
 
     fig.text(0.5, 0.01, XL, ha='center')
-    fig.text(0.002, 0.5, YL, va='center', rotation='vertical')
+    fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
 
     # plt.title(mode)
     plt.tight_layout()
@@ -423,62 +425,80 @@ def show_rms_series(
         plt.show()
 
 
+class AlignType(enum.Enum):
+    FIRST_FRAME = 0
+    MEAN_FRAME = 1
+
+
+def align_universe(u: mda.Universe,
+                   align_type: AlignType,
+                   sel: str = "protein and name CA"):
+
+    atoms = u.select_atoms(sel)
+
+    if align_type == AlignType.MEAN_FRAME:
+        ref_coordinates = u.trajectory.timeseries(asel=atoms).mean(axis=1)
+    else:
+        ref_coordinates = u.trajectory.timeseries(asel=atoms)[:, 0, :]
+
+    REF = ref_coordinates.copy()
+
+    # Make a reference structure (need to reshape into a
+    # 1-frame "trajectory").
+    ref = mda.Merge(atoms).load_new(
+        ref_coordinates[:, None, :],
+        order="afc"
+    )
+
+    align.AlignTraj(
+        u,
+        ref,
+        select="protein and name CA",
+        in_memory=True
+    ).run()
+
+    return REF, atoms
+
+
 def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
     rmsds = []
-    bb = u.select_atoms("backbone")
 
     J = len(u.trajectory)
 
+    ref, atoms = align_universe(u, AlignType.FIRST_FRAME)
     for t, traj in enumerate(u.trajectory):
-        if t == 0:
 
-            if arguments.ReferenceMean:
-                ref_coordinates = u.trajectory.timeseries(asel=bb).mean(axis=1)
-                REF = ref_coordinates.positions.copy()
-            else:
-                ref_coordinates = u.trajectory.timeseries(asel=bb)[:, 0, :]
-                REF = ref_coordinates.copy()
+        if verbose:
+            print(f"{t} of {J}")
 
-            # Make a reference structure (need to reshape into a
-            # 1-frame "trajectory").
-            ref = mda.Merge(bb).load_new(
-                ref_coordinates[:, None, :],
-                order="afc"
-            )
+        v = rms.rmsd(ref, atoms.positions)
+        rmsds.append(v)
 
-            align.AlignTraj(
-                u,
-                ref,
-                select="protein and name CA",
-                in_memory=True
-            ).run()
-
-            # need to write the trajectory to
-            # disk for PMDA 0.3.0 (see issue #15)
-            with mda.Writer("rmsfit.xtc", n_atoms=u.atoms.n_atoms) as W:
-                for ts in u.trajectory:
-                    W.write(u.atoms)
-        else:
-            if verbose:
-                print(f"{t} of {J}")
-
-            v = rms.rmsd(REF, bb.positions)
-            rmsds.append(v)
-
-    os.remove("rmsfit.xtc")
+    #os.remove("rmsfit.xtc")
 
     return rmsds
 
 
 def time_series_rmsf(u, end_pct=100) -> List[float]:
-    sel = "protein and name CA"
-    c_alphas = u.select_atoms(sel)
-    return cast(List[float], rms.RMSF(c_alphas).run().rmsf)
+
+    ref, atoms = align_universe(u, AlignType.MEAN_FRAME)
+
+    rmsf = rms.RMSF(atoms).run().rmsf
+
+    return cast(List[float], rmsf)
 
 
 def analyze_pca(u: mda.Universe):
     PCA = pca.PCA(u, select='backbone')
-    PCA.run()
+    space = PCA.run()
+    for i, var in enumerate(space.cumulated_variance):
+        print(var)
+        if i == 5:
+            break
+
+    space_3 = space.transform(u.select_atoms('backbone'), 3)
+    w = pca.cosine_content(space_3, 0)
+    print(w)
 
 
 def plotq(matrix):
