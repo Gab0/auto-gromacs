@@ -341,17 +341,27 @@ def show_rms_series_monolithic(
 
     fig.set_figwidth(9.6)
 
-    for i, Xa in enumerate(rms_series):
-        ax.plot(range(len(Xa)), Xa)
+    def to_time_x(X):
+        return frames_to_time(X, 64)
+
+    def _(x):
+        return x
 
     YL = r"Distância ($\AA$)"
-    if mode.startswith("RMSD"):
+    if mode == "RMSDt":
+        XL = "Tempo (ns)"
+        make_x = to_time_x
+    elif mode == "RMSDf":
         XL = "Frame"
+        make_x = _
 
     elif mode == "RMSF":
         XL = "Residue"
     else:
         raise Exception("Unknown plot identifier.")
+
+    for i, Xa in enumerate(rms_series):
+        ax.plot(make_x(range(len(Xa))), Xa)
 
     # ax.set_title(mode)
     ax.set_xlabel(XL)
