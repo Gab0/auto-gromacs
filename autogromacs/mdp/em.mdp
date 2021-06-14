@@ -1,5 +1,3 @@
-; LINES STARTING WITH ';' ARE COMMENTS
-
 ; Parameters describing what to do, when to stop and what to save
 integrator    = steep        ; Algorithm (steep = steepest descent minimization)
 emtol         = 100.0        ; Stop minimization when the maximum force < 1.0
