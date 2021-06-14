@@ -387,12 +387,15 @@ def show_rms_series(
     nrows = round(np.ceil(N / ncols))
 
     assert ncols * nrows >= N
-    fig, ax = plt.subplots(nrows, ncols)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    axv = fig.subplots(nrows, ncols)
 
     try:
-        axk = ax.ravel()
+        axk = axv.ravel()
     except AttributeError:
-        axk = [ax]
+        axk = [axv]
 
     for i, (vals, label) in enumerate(zip(rms_series, labels)):
 
@@ -413,9 +416,19 @@ def show_rms_series(
         axk[i].plot(X, Y, "b-")
         axk[i].set_title(label)
 
-    fig.text(0.5, 0.01, XL, ha='center')
-    fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
+    # fig.text(0.5, 0.01, XL, ha='center')
+    # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
+    ax.spines['top'].set_color('none')
+    ax.spines['bottom'].set_color('none')
+    ax.spines['left'].set_color('none')
+    ax.spines['right'].set_color('none')
+    ax.set_facecolor('#ffffff')
 
+    ax.tick_params(labelcolor='w', top=False,
+                   bottom=False, left=False, right=False)
+
+    ax.set_xlabel(XL)
+    ax.set_ylabel(YL)
     # plt.title(mode)
     plt.tight_layout()
 
