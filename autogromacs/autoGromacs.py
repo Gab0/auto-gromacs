@@ -17,8 +17,8 @@ from .core import settings
 
 bashlog = None
 
-EM_MDP = "ions.mdp"
-EMW_MDP = "ions.mdp"
+IONS_MDP = "ions.mdp"
+EM_MDP = "em.mdp"
 NVT_MDP = "nvt.mdp"
 
 
@@ -424,9 +424,6 @@ class GromacsSimulation(object):
             "step4.log 2>&1"
         return self.run_process(step_no, step_name, command)
 
-    def write_em_mdp(self):
-        self.load_mdp(EM_MDP)
-
     def load_mdp(self, mdpname):
 
         if os.path.isfile(mdpname):
@@ -451,9 +448,11 @@ class GromacsSimulation(object):
 
         log_file = self.path_log(step_no)
 
+        self.load_mdp(IONS_MDP)
+
         command = [
             grompp,
-            "-f", self.working_dir + EM_MDP,
+            "-f", self.working_dir + IONS_MDP,
             "-c", self.working_dir + "solv.gro",
             "-p", self.working_dir + "topol.top",
             "-o", self.working_dir + "ions.tpr",
@@ -521,11 +520,8 @@ class GromacsSimulation(object):
 
         print("DOUBLE CHEERS: SUCCESSFULLY PREPARED SYSTEM FOR SIMULATION")
 
-    def create_em_mdp(self):
-        self.load_mdp(EMW_MDP)
-
     def minimize(self, arguments):
-        print(">STEP7 : Preparing the files for Minimisation")
+        print(">STEP7 : Preparing the files for Minimization")
         # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
         # mdrun -v -deffnm em
         grompp = settings.g_prefix + "grompp"
@@ -533,11 +529,12 @@ class GromacsSimulation(object):
         step_no = "7"
         step_name = "Prepare files for Minimisation"
         # max warn 3 only for now
-        command = grompp + " -f " + self.working_dir + EMW_MDP + " -c " +\
+        command = grompp + " -f " + self.working_dir + IONS_MDP + " -c " +\
             self.working_dir + "solv_ions.gro -p " + self.working_dir\
             + "topol.top -o " + self.working_dir + "em.tpr -po " +\
             self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir\
             + "step7.log 2>&1"
+
         self.run_process(step_no, step_name, command)
 
         step_no = "8"
@@ -545,8 +542,7 @@ class GromacsSimulation(object):
 
         command = self.base_mdrun("em")
 
-        if not arguments.dummy:
-            self.run_process(step_no, step_name, command)
+        self.run_process(step_no, step_name, command)
 
     def nvt(self, arguments):
         print(">STEP9 : Initiating the Procedure to Equilibrate the System")
@@ -823,6 +819,21 @@ def session_action_decision(arguments) -> SessionAction:
     return SessionAction.Nothing
 
 
+def backup_existing_directory(working_dir):
+    W = os.path.split(working_dir)
+
+    if not W[1]:
+        From = W[0]
+    else:
+        From = working_dir
+
+    if os.path.isdir(From):
+        To = os.path.join(os.path.basename(From), "BACKUP")
+        if os.path.isdir(To):
+            shutil.rmtree(To)
+        shutil.move(From, To)
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -900,10 +911,20 @@ def parse_arguments():
         help="Execute postprocessing steps only."
     )
 
+    parser.add_argument(
+        "--remove-dir",
+        dest="RemoveDirectory",
+        action="store_true",
+        help="Force removal of existing working directory."
+    )
+
     return parser.parse_args()
 
 
 def run_pipeline(arguments):
+
+    if arguments.RemoveDirectory:
+        backup_existing_directory(arguments.working_dir)
 
     obj = GromacsSimulation(arguments)
 
@@ -920,9 +941,7 @@ def run_pipeline(arguments):
         # mandatory steps;
         obj.pdb2gmx_coord,
         obj.solvate_complex,
-        obj.write_em_mdp,
         obj.add_ions,
-        obj.create_em_mdp,
         obj.minimize,
     ]
 
@@ -958,7 +977,10 @@ def run_pipeline(arguments):
         STEPS = STEPS_GATHER + STEPS_PREPARE
 
     elif Action == SessionAction.New:
-        STEPS = STEPS_GATHER + STEPS_PREPARE + STEPS_EXECUTE + STEPS_POSTPROCESS
+        STEPS = STEPS_GATHER + \
+            STEPS_PREPARE + \
+            STEPS_EXECUTE + \
+            STEPS_POSTPROCESS
 
     for STEP in STEPS:
         now = datetime.datetime.now().strftime("%H:%M:%S")
