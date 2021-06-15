@@ -1,4 +1,3 @@
- 
 from typing import List, Union
 
 import seaborn as sns
@@ -37,6 +36,7 @@ def show_matrix(results, labels, filepath: Union[str, None]):
 def show_rms_series_monolithic(
         rms_series: List[List[float]],
         labels: List[str],
+        total_times: List[float],
         filepath: Union[str, None],
         mode: str):
 
@@ -44,30 +44,29 @@ def show_rms_series_monolithic(
 
     fig.set_figwidth(9.6)
 
-    def to_time_x(X):
-        return frames_to_time(X, 64)
+    def to_time_x(X, t):
+        return frames_to_time(X, total_times)
 
-    def _(x):
-        return x
+    def _(X, t):
+        return X
 
     YL = r"Distância ($\AA$)"
+    make_x = _
     if mode == "RMSDt":
         XL = "Tempo (ns)"
         make_x = to_time_x
     elif mode == "RMSDf":
         XL = "Frame"
-        make_x = _
-
     elif mode == "RMSF":
-        XL = "Residue"
+        XL = "Resíduo"
     elif mode == "PCA":
-        XL = "Component"
-        YL = "% Variance"
+        XL = "Componente"
+        YL = "Variância Acumulada"
     else:
         raise Exception("Unknown plot identifier.")
 
     for i, Xa in enumerate(rms_series):
-        ax.plot(make_x(range(len(Xa))), Xa)
+        ax.plot(make_x(range(len(Xa)), total_times[i]), Xa)
 
     # ax.set_title(mode)
     ax.set_xlabel(XL)
@@ -83,7 +82,7 @@ def show_rms_series_monolithic(
 
 
 def frames_to_time(frames: Union[List[float], List[int]],
-                   total_time: int) -> List[float]:
+                   total_time: float) -> List[float]:
     total_frames = frames[-1]
 
     def to_t(v: Union[int, float]) -> float:
@@ -95,6 +94,7 @@ def frames_to_time(frames: Union[List[float], List[int]],
 def show_rms_series(
         rms_series: List[List[float]],
         labels: List[str],
+        total_times: List[float],
         filepath: Union[str, None],
         mode: str):
 
@@ -107,6 +107,10 @@ def show_rms_series(
     fig = plt.figure()
     ax = fig.add_subplot(111)
     axv = fig.subplots(nrows, ncols)
+
+    Values = np.array(rms_series)
+    Y_MAX = np.max(Values)
+    Y_MIN = np.min(Values)
 
     try:
         axk = axv.ravel()
@@ -123,7 +127,7 @@ def show_rms_series(
             XL = "Frame"
         elif mode == "RMSDt":
             XL = "Tempo (ns)"
-            X = frames_to_time(X, 64)
+            X = frames_to_time(X, total_times[i])
         elif mode == "RMSF":
             XL = "Residue"
         else:
@@ -131,6 +135,7 @@ def show_rms_series(
 
         axk[i].plot(X, Y, "b-")
         axk[i].set_title(label)
+        axk[i].set_ylim(bottom=Y_MIN, top=Y_MAX)
 
     # fig.text(0.5, 0.01, XL, ha='center')
     # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')

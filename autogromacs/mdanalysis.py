@@ -266,6 +266,7 @@ def analyzeMD(arguments):
         rmsd_series = []
         rmsf_series = []
         pca_series = []
+        total_times = []
         for i, SP in enumerate(SimulationPrefixes):
             print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
             u = load_universe(SP, arguments)
@@ -275,18 +276,24 @@ def analyzeMD(arguments):
 
             pca_series.append(analyze_pca(u))
 
+            # Store total time in nanoseconds;
+            total_times.append(u.total_time / 1000)
+
             u.trajectory.close()
             del u
 
         mdplots.show_rms_series(
             rmsd_series,
             labels,
+            total_times,
             build_filepath(base_filepath, ["tsp", "rmsd"], arguments),
             "RMSDt"
         )
 
         mdplots.show_rms_series_monolithic(
-            rmsd_series, labels,
+            rmsd_series,
+            labels,
+            total_times,
             build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
             "RMSDt"
         )
@@ -294,6 +301,7 @@ def analyzeMD(arguments):
         mdplots.show_rms_series(
             rmsf_series,
             labels,
+            total_times,
             build_filepath(base_filepath, ["ts", "rmsf"], arguments),
             "RMSF"
         )
@@ -301,6 +309,7 @@ def analyzeMD(arguments):
         mdplots.show_rms_series_monolithic(
             rmsf_series,
             labels,
+            total_times,
             build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
             "RMSF"
         )
@@ -308,6 +317,7 @@ def analyzeMD(arguments):
         mdplots.show_rms_series_monolithic(
             pca_series,
             labels,
+            total_times,
             build_filepath(base_filepath, ["tsmono", "pca"], arguments),
             "PCA"
         )
@@ -379,11 +389,6 @@ def time_series_rmsf(u, end_pct=100) -> List[float]:
 def analyze_pca(u: mda.Universe):
     PCA = pca.PCA(u, select='backbone')
     space = PCA.run()
-
-    for i, var in enumerate(space.cumulated_variance):
-        print(var)
-        if i == 5:
-            break
 
     space_3 = space.transform(u.select_atoms('backbone'), 3)
     w = pca.cosine_content(space_3, 0)
