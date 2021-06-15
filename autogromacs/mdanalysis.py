@@ -1,5 +1,5 @@
 
-from typing import List, Union, Optional, cast
+from typing import List, Optional, cast
 import enum
 import argparse
 import sys
@@ -12,11 +12,9 @@ import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca
 
 import numpy.linalg
-import seaborn as sns
-import matplotlib.pyplot as plt
 
-sns.set_theme(style="darkgrid")
-plt.rcParams["axes.labelsize"] = 15
+from . import mdplots
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
@@ -267,7 +265,7 @@ def analyzeMD(arguments):
         labels = []
         rmsd_series = []
         rmsf_series = []
-
+        pca_series = []
         for i, SP in enumerate(SimulationPrefixes):
             print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
             u = load_universe(SP, arguments)
@@ -275,177 +273,44 @@ def analyzeMD(arguments):
             rmsd_series.append(time_series_rmsd(u, arguments))
             rmsf_series.append(time_series_rmsf(u))
 
-            analyze_pca(u)
+            pca_series.append(analyze_pca(u))
+
             u.trajectory.close()
             del u
 
-        show_rms_series(
+        mdplots.show_rms_series(
             rmsd_series,
             labels,
             build_filepath(base_filepath, ["tsp", "rmsd"], arguments),
             "RMSDt"
         )
 
-        show_rms_series_monolithic(
+        mdplots.show_rms_series_monolithic(
             rmsd_series, labels,
             build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
             "RMSDt"
         )
 
-        show_rms_series(
+        mdplots.show_rms_series(
             rmsf_series,
             labels,
             build_filepath(base_filepath, ["ts", "rmsf"], arguments),
             "RMSF"
         )
 
-        show_rms_series_monolithic(
+        mdplots.show_rms_series_monolithic(
             rmsf_series,
             labels,
             build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
             "RMSF"
         )
 
-
-def show_matrix(results, labels, filepath: Union[str, None]):
-    fig, ax = plt.subplots()
-
-    im = ax.imshow(results, cmap='viridis')
-
-    fig.colorbar(im, ax=ax, label=r'RMSD ($\AA$)')
-    # We want to show all ticks...
-    U = np.arange(len(labels))
-    ax.set_yticks(U)
-    plt.xticks(range(len(results)), labels, rotation='vertical')
-
-    # ax.set_xticks(U, rotation='vertical')
-    # ... and label them with the respective list entries
-    ax.set_yticklabels(labels)
-    ax.set_xticklabels(labels)
-
-    plt.tight_layout()
-
-    if filepath is not None:
-        plt.savefig(filepath)
-    else:
-        plt.show()
-
-
-def show_rms_series_monolithic(
-        rms_series: List[List[float]],
-        labels: List[str],
-        filepath: Union[str, None],
-        mode: str):
-
-    fig, ax = plt.subplots()
-
-    fig.set_figwidth(9.6)
-
-    def to_time_x(X):
-        return frames_to_time(X, 64)
-
-    def _(x):
-        return x
-
-    YL = r"Distância ($\AA$)"
-    if mode == "RMSDt":
-        XL = "Tempo (ns)"
-        make_x = to_time_x
-    elif mode == "RMSDf":
-        XL = "Frame"
-        make_x = _
-
-    elif mode == "RMSF":
-        XL = "Residue"
-    else:
-        raise Exception("Unknown plot identifier.")
-
-    for i, Xa in enumerate(rms_series):
-        ax.plot(make_x(range(len(Xa))), Xa)
-
-    # ax.set_title(mode)
-    ax.set_xlabel(XL)
-    ax.set_ylabel(YL)
-
-    ax.legend(labels)
-    plt.tight_layout()
-
-    if filepath is not None:
-        plt.savefig(filepath)
-    else:
-        plt.show()
-
-
-def frames_to_time(frames: Union[List[float], List[int]],
-                   total_time: int) -> List[float]:
-    total_frames = frames[-1]
-
-    def to_t(v: Union[int, float]) -> float:
-        return v / total_frames * total_time
-
-    return list(map(to_t, frames))
-
-
-def show_rms_series(
-        rms_series: List[List[float]],
-        labels: List[str],
-        filepath: Union[str, None],
-        mode: str):
-
-    N = len(labels)
-    ncols = 1
-    nrows = round(np.ceil(N / ncols))
-
-    assert ncols * nrows >= N
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    axv = fig.subplots(nrows, ncols)
-
-    try:
-        axk = axv.ravel()
-    except AttributeError:
-        axk = [axv]
-
-    for i, (vals, label) in enumerate(zip(rms_series, labels)):
-
-        Y = vals
-        X: Union[List[float], List[int]] = list(range(len(Y)))
-
-        YL = r"Distância ($\AA$)"
-        if mode == "RMSDf":
-            XL = "Frame"
-        elif mode == "RMSDt":
-            XL = "Tempo (ns)"
-            X = frames_to_time(X, 64)
-        elif mode == "RMSF":
-            XL = "Residue"
-        else:
-            exit(1)
-
-        axk[i].plot(X, Y, "b-")
-        axk[i].set_title(label)
-
-    # fig.text(0.5, 0.01, XL, ha='center')
-    # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
-    ax.spines['top'].set_color('none')
-    ax.spines['bottom'].set_color('none')
-    ax.spines['left'].set_color('none')
-    ax.spines['right'].set_color('none')
-    ax.set_facecolor('#ffffff')
-
-    ax.tick_params(labelcolor='w', top=False,
-                   bottom=False, left=False, right=False)
-
-    ax.set_xlabel(XL)
-    ax.set_ylabel(YL)
-    # plt.title(mode)
-    plt.tight_layout()
-
-    if filepath is not None:
-        plt.savefig(filepath)
-    else:
-        plt.show()
+        mdplots.show_rms_series_monolithic(
+            pca_series,
+            labels,
+            build_filepath(base_filepath, ["tsmono", "pca"], arguments),
+            "PCA"
+        )
 
 
 class AlignType(enum.Enum):
@@ -497,7 +362,7 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
         v = rms.rmsd(ref, atoms.positions)
         rmsds.append(v)
 
-    #os.remove("rmsfit.xtc")
+    # os.remove("rmsfit.xtc")
 
     return rmsds
 
@@ -514,6 +379,7 @@ def time_series_rmsf(u, end_pct=100) -> List[float]:
 def analyze_pca(u: mda.Universe):
     PCA = pca.PCA(u, select='backbone')
     space = PCA.run()
+
     for i, var in enumerate(space.cumulated_variance):
         print(var)
         if i == 5:
@@ -523,14 +389,7 @@ def analyze_pca(u: mda.Universe):
     w = pca.cosine_content(space_3, 0)
     print(w)
 
-
-def plotq(matrix):
-    plt.imshow(matrix.dist_matrix, cmap='viridis')
-    plt.xlabel('Frame')
-    plt.ylabel('Frame')
-    plt.colorbar(label=r'RMSD ($\AA$)')
-
-    plt.show()
+    return space.cumulated_variance[:10]
 
 
 def main():
