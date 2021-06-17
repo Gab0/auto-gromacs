@@ -267,6 +267,7 @@ def analyzeMD(arguments):
         rmsf_series = []
         pca_series = []
         total_times = []
+
         for i, SP in enumerate(SimulationPrefixes):
             print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
             u = load_universe(SP, arguments)
@@ -277,7 +278,7 @@ def analyzeMD(arguments):
             pca_series.append(analyze_pca(u))
 
             # Store total time in nanoseconds;
-            total_times.append(u.total_time / 1000)
+            total_times.append(u.trajectory.totaltime / 1000)
 
             u.trajectory.close()
             del u
