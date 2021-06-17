@@ -45,7 +45,7 @@ def show_rms_series_monolithic(
     fig.set_figwidth(9.6)
 
     def to_time_x(X, t):
-        return frames_to_time(X, total_times)
+        return frames_to_time(X, t)
 
     def _(X, t):
         return X
@@ -105,6 +105,10 @@ def show_rms_series(
     assert ncols * nrows >= N
 
     fig = plt.figure()
+
+    fig.set_figheight(3 + 3 * 0.2 * N)
+    fig.set_figwidth(3)
+
     ax = fig.add_subplot(111)
     axv = fig.subplots(nrows, ncols)
 
@@ -136,6 +140,8 @@ def show_rms_series(
         axk[i].plot(X, Y, "b-")
         axk[i].set_title(label)
         axk[i].set_ylim(bottom=Y_MIN, top=Y_MAX)
+        if i + 1 < len(labels):
+            axk[i].set_xticks([])
 
     # fig.text(0.5, 0.01, XL, ha='center')
     # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
@@ -150,8 +156,8 @@ def show_rms_series(
 
     ax.set_xlabel(XL)
     ax.set_ylabel(YL)
-    # plt.title(mode)
-    plt.tight_layout()
+
+    plt.subplots_adjust(hspace=0.2)
 
     if filepath is not None:
         plt.savefig(filepath)
