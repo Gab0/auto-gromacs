@@ -4,9 +4,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 import numpy as np
+import pandas as pd
 
 sns.set_theme(style="darkgrid")
 plt.rcParams["axes.labelsize"] = 15
+plt.rcParams["figure.dpi"] = 700
 
 
 def show_matrix(results, labels, filepath: Union[str, None]):
@@ -91,6 +93,18 @@ def frames_to_time(frames: Union[List[float], List[int]],
     return list(map(to_t, frames))
 
 
+def write_series(
+        series_data: List[List[float]],
+        labels: List[str],
+        filepath: str):
+
+    data = {}
+    for d, l in zip(series_data, labels):
+        data[l] = d
+    df = pd.DataFrame(data, columns=labels)
+    df.to_csv(filepath)
+
+
 def show_rms_series(
         rms_series: List[List[float]],
         labels: List[str],
@@ -106,8 +120,9 @@ def show_rms_series(
 
     fig = plt.figure()
 
-    fig.set_figheight(3 + 3 * 0.2 * N)
-    fig.set_figwidth(3)
+    V = 6
+    fig.set_figheight(1 + V * 0.2 * N)
+    fig.set_figwidth(V)
 
     ax = fig.add_subplot(111)
     axv = fig.subplots(nrows, ncols)
@@ -138,7 +153,9 @@ def show_rms_series(
             exit(1)
 
         axk[i].plot(X, Y, "b-")
-        axk[i].set_title(label)
+        axk[i].set_ylabel(label)
+        axk[i].yaxis.set_label_position("right")
+
         axk[i].set_ylim(bottom=Y_MIN, top=Y_MAX)
         if i + 1 < len(labels):
             axk[i].set_xticks([])
@@ -157,7 +174,7 @@ def show_rms_series(
     ax.set_xlabel(XL)
     ax.set_ylabel(YL)
 
-    plt.subplots_adjust(hspace=0.2)
+    plt.subplots_adjust(hspace=0.05)
 
     if filepath is not None:
         plt.savefig(filepath)
