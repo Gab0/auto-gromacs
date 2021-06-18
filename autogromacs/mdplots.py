@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Optional
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -29,10 +29,7 @@ def show_matrix(results, labels, filepath: Union[str, None]):
 
     plt.tight_layout()
 
-    if filepath is not None:
-        plt.savefig(filepath)
-    else:
-        plt.show()
+    execute_output(filepath)
 
 
 def show_rms_series_monolithic(
@@ -77,6 +74,10 @@ def show_rms_series_monolithic(
     ax.legend(labels)
     plt.tight_layout()
 
+    execute_output(filepath)
+
+
+def execute_output(filepath: Optional[str]) -> None:
     if filepath is not None:
         plt.savefig(filepath)
     else:
@@ -153,12 +154,16 @@ def show_rms_series(
             exit(1)
 
         axk[i].plot(X, Y, "b-")
-        axk[i].set_ylabel(label)
+
+        axk[i].set_ylabel(label, fontsize=12)
         axk[i].yaxis.set_label_position("right")
 
         axk[i].set_ylim(bottom=Y_MIN, top=Y_MAX)
         if i + 1 < len(labels):
-            axk[i].set_xticks([])
+            axk[i].set(xlabel=None)
+
+        axk[i].grid(b=False, axis='x')
+        axk[i].tick_params(bottom=False)
 
     # fig.text(0.5, 0.01, XL, ha='center')
     # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
