@@ -106,7 +106,7 @@ def write_series(
     df.to_csv(filepath)
 
 
-def show_rms_series(
+def show_rms_series_stacked(
         rms_series: List[List[float]],
         labels: List[str],
         total_times: List[float],
@@ -122,7 +122,7 @@ def show_rms_series(
     fig = plt.figure()
 
     V = 6
-    fig.set_figheight(1 + V * 0.2 * N)
+    fig.set_figheight(2.5 + V * 0.20 * N)
     fig.set_figwidth(V)
 
     ax = fig.add_subplot(111)
@@ -153,10 +153,18 @@ def show_rms_series(
         else:
             exit(1)
 
-        axk[i].plot(X, Y, "b-")
+        axk[i].plot(X, Y, "b-", color="black")
 
         axk[i].set_ylabel(label, fontsize=12)
         axk[i].yaxis.set_label_position("right")
+
+        YTICK_INTERVAL = 5
+        YTICKS = list(range(0, 100, YTICK_INTERVAL))
+
+        if Y_MAX < YTICK_INTERVAL:
+            YTICKS.append(Y_MAX)
+            
+        axk[i].set_yticks(sorted(YTICKS))
 
         axk[i].set_ylim(bottom=Y_MIN, top=Y_MAX)
         if i + 1 < len(labels):
