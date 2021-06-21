@@ -27,7 +27,9 @@ def parse_arguments():
     parser.add_argument("-t", dest='TrajSuffix', default="")
     parser.add_argument("-M", dest='DoMatrix', action="store_true")
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
+
     parser.add_argument("-w", dest='WriteOutput', action="store_true")
+    parser.add_argument("-i", dest='OutputIdentifier')
 
     parser.add_argument('-m', dest='ReferenceMean', action="store_true")
 
@@ -214,6 +216,11 @@ def build_filepath(
                 base += "+"
         else:
             base = "analysis"
+
+        ID = arguments.OutputIdentifier
+        if ID:
+            specifiers.append(ID)
+
         return base + "_" + "_".join(specifiers) + ".png"
 
     return None
@@ -283,7 +290,7 @@ def analyzeMD(arguments):
             u.trajectory.close()
             del u
 
-        mdplots.show_rms_series(
+        mdplots.show_rms_series_stacked(
             rmsd_series,
             labels,
             total_times,
@@ -299,7 +306,7 @@ def analyzeMD(arguments):
             "RMSDt"
         )
 
-        mdplots.show_rms_series(
+        mdplots.show_rms_series_stacked(
             rmsf_series,
             labels,
             total_times,
@@ -395,7 +402,7 @@ def analyze_pca(u: mda.Universe):
     w = pca.cosine_content(space_3, 0)
     print(w)
 
-    return space.cumulated_variance[:10]
+    return space.cumulated_variance[:40]
 
 
 def main():
