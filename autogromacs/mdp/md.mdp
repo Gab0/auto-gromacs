@@ -10,10 +10,11 @@ nstlog		          = 50000 		; update log file every 10.0 ps
 nstxout-compressed  = 5000      ; save compressed coordinates every 10.0 ps
                                 ; nstxout-compressed replaces nstxtcout
 compressed-x-grps   = System    ; replaces xtc-grps
+
 ; Bond parameters
 continuation        = yes   		; Restarting after NPT 
 constraint_algorithm    = lincs	    ; holonomic constraints 
-constraints	            = all-bonds	; all bonds (even heavy atom-H bonds) constrained
+constraints	            = none   	; all bonds (even heavy atom-H bonds) constrained
 lincs_iter	            = 1		    ; accuracy of LINCS
 lincs_order	            = 4		    ; also related to accuracy
 
