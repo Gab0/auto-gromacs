@@ -129,8 +129,11 @@ def show_rms_series_stacked(
     axv = fig.subplots(nrows, ncols)
 
     Values = np.array(rms_series)
-    Y_MAX = np.max(Values)
-    Y_MIN = np.min(Values)
+    try:
+        Y_MAX = np.max(Values)
+        Y_MIN = np.min(Values)
+    except ValueError:
+        raise
 
     try:
         axk = axv.ravel()
@@ -161,12 +164,12 @@ def show_rms_series_stacked(
         YTICK_INTERVAL = 5
         YTICKS = list(range(0, 100, YTICK_INTERVAL))
 
-        if Y_MAX < YTICK_INTERVAL:
-            YTICKS.append(Y_MAX)
-            
+        # if Y_MAX < YTICK_INTERVAL:
+        #     YTICKS.append(Y_MAX - 0.1)
+
         axk[i].set_yticks(sorted(YTICKS))
 
-        axk[i].set_ylim(bottom=Y_MIN, top=Y_MAX)
+        axk[i].set_ylim(bottom=0, top=max(Y_MAX, YTICK_INTERVAL + 0.5))
         if i + 1 < len(labels):
             axk[i].set(xlabel=None)
 
