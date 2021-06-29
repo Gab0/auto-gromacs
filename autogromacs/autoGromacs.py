@@ -6,12 +6,11 @@ import sys
 import os
 import re
 import subprocess
-import shutil
 import datetime
 import pathlib
 
-from typing import List, Union
-from .core.messages import welcome_message, backup_folder_already_exists
+from typing import List, Union, Optional
+from .core.messages import welcome_message
 from .core import settings
 
 
@@ -22,9 +21,15 @@ EM_MDP = "em.mdp"
 NVT_MDP = "nvt.mdp"
 
 
+def message(func, message):
+    def wrapper():
+        print(message)
+        func()
+
+
 def handle_error(ERROR, step_no, log_file=None):
     if ERROR == 0:
-        print('STEP%s Completed!' %  step_no)
+        print('STEP%s Completed!' % step_no)
         print("")
         return
     else:
@@ -37,7 +42,8 @@ def handle_error(ERROR, step_no, log_file=None):
             sys.exit(ERROR)
         else:
             print("\n")
-            print("HEADS UP: Command failed for Step %s: return code %i." % (step_no, ERROR))
+            print("HEADS UP: Command failed for Step %s: return code %i."
+                  % (step_no, ERROR))
             sys.exit(ERROR)
 
 
@@ -61,7 +67,6 @@ class GromacsSimulation(object):
         self.ligand_file_path = arguments.ligand
         if not self.ligand_file_path:
             pass
-            #self.ligand_file_path = self.protein_file_path.split('.')[0] + '.gro'
 
         self.ligand_topology_file_path = arguments.ligand_topology
         if not self.ligand_topology_file_path:
@@ -81,8 +86,11 @@ class GromacsSimulation(object):
             print('Can\'t use both the verbose and quiet flags together')
             sys.exit()
 
-    def to_wd(self, f):
-        return os.path.join(self.working_dir, f)
+    def to_wd(self, f, subdir: List[str] = []) -> str:
+        basedir = os.path.join(self.working_dir, *subdir)
+        pathlib.Path(basedir).mkdir(parents=True, exist_ok=True)
+
+        return os.path.join(basedir, f)
 
     def path_state_file(self):
         return self.to_wd("md.cpt")
@@ -125,10 +133,15 @@ class GromacsSimulation(object):
     def exit_program(self):
         pass
 
-    def run_process(self, step_no, step_name: str,
-                    command: Union[List[str], str],
-                    log_file=None, Input: str = None):
-        print("INFO: Attempting to execute " + step_name + \
+    def run_process(
+            self,
+            step_no: str,
+            step_name: str,
+            command: Union[List[str], str],
+            log_file=None,
+            Input: Optional[str] = None):
+
+        print("INFO: Attempting to execute " + step_name +
               " [STEP:" + step_no + "]")
 
         if isinstance(command, list):
@@ -147,8 +160,8 @@ class GromacsSimulation(object):
         ret = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
 
         if Input is not None:
-            Input = Input.encode("utf-8")
-            ret.communicate(Input)
+            proc_input = Input.encode("utf-8")
+            ret.communicate(proc_input)
 
         ret.wait()
 
@@ -216,10 +229,12 @@ class GromacsSimulation(object):
             print('Ligand file not found at ', self.ligand_file_path)
             needStepZero = 1
 
-        elif not self.ligand_topology_file_path or \
-             not os.path.isfile(self.ligand_topology_file_path):
-            print('Ligand Topology file not found at ', \
-                self.ligand_topology_file_path)
+        elif any(
+                not self.ligand_topology_file_path,
+                not os.path.isfile(self.ligand_topology_file_path)
+        ):
+            print('Ligand Topology file not found at ',
+                  self.ligand_topology_file_path)
             needStepZero = 1
 
         elif not os.path.isfile(self.protein_file_path):
@@ -229,32 +244,24 @@ class GromacsSimulation(object):
         else:
             print('All data files found.')
 
-        if os.path.isdir(self.working_dir):
-            print("Folder '" + self.working_dir + "' Aready exist")
-            if os.path.isdir("BACKUP"):
-                print("WARNING: Backup folder already exists. Removing Backup folder!")
-                print(backup_folder_already_exists)
-                shutil.rmtree("BACKUP")
-
-
-            if os.rename(self.working_dir, "BACKUP"):
-                print("Old " + self.working_dir + " was moved to BACKUP/")
-
-
         pathlib.Path(self.working_dir).mkdir(parents=True, exist_ok=True)
 
+        # FIXME AVOID GLOBALS
         global bashlog
         bashlog = open(os.path.join(self.working_dir, 'bashlog'), 'w')
 
-        print("CHEERS: Working Directory " + self.working_dir + \
+        print("CHEERS: Working Directory " + self.working_dir +
               " created Successfully")
         print("Moving the files to Working Directory" + self.working_dir)
 
         shutil.copy2(self.protein_file_path, self.working_dir + 'protein.pdb')
 
         if self.ligand_file_path:
-            shutil.copy2(self.ligand_file_path, self.working_dir + 'ligand.pdb')
-        #shutil.copy2(self.ligand_topology_file_path,
+            shutil.copy2(
+                self.ligand_file_path,
+                self.working_dir + 'ligand.pdb'
+            )
+        # shutil.copy2(self.ligand_topology_file_path,
         #             self.working_dir + 'ligand.itp')
 
     def pdb2gmx_coord(self, arguments):
@@ -270,17 +277,12 @@ class GromacsSimulation(object):
     def pdb2gmx_proc(self, arguments, TARGET):
         assert (TARGET in ["protein", "ligand"])
 
-        print("-> STEP 1: Initiating Procedure to generate topology for %s." % TARGET)
+        print("-> STEP 1: Initiating Procedure to generate topology for %s."
+              % TARGET)
         pdb2gmx = settings.g_prefix + "pdb2gmx"
         step_no = "1"
         step_name = "Topology Generation"
-
-        FFs = [
-            "gromos54a7",
-            "amber03"
-        ]
-
-        log_file = "%sstep1_%s.log" % (self.working_dir,TARGET)
+        log_file = "%sstep1_%s.log" % (self.working_dir, TARGET)
 
         POSRE_PATH = self.to_wd("posre.itp")
         TOPOL_PATH = self.to_wd("topol.top")
@@ -295,7 +297,6 @@ class GromacsSimulation(object):
             "-water", arguments.solvent
         ]
 
-        #assert(os.path.isfile(POSRE_PATH))
         command = " ".join(command)
         self.run_process(step_no, step_name, command, log_file)
 
@@ -304,21 +305,15 @@ class GromacsSimulation(object):
         # When processing 'includes' for topology files.
         self.fix_includes(TOPOL_PATH)
 
-    # MAYBE THIS IS NOT NEEDED.
-    def conjugateProteinLigand(self):
-        print("-> STEP 1.5: Conjugating protein and ligand.")
-        step_no = "0"
-        step_name = "Complex Conjugation"
-
     def prepare_system(self):
         exit()
         print("-> STEP 2: Initiating Precedure to merge two molecules.")
         start_from_line = 3  # or whatever line I need to jump to
 
         # TODO: WHAT IS THIS?
-        protein = self.working_dir + "protein.gro"
-        system = self.working_dir + "system.gro"
-        ligand = self.working_dir + "ligand.gro"
+        protein = self.to_wd("protein.gro")
+        system = self.to_wd("system.gro")
+        ligand = self.to_wd("ligand.gro")
 
         protein_file = open(protein, "r")
         ligand_file = open(ligand, "r")
@@ -368,22 +363,22 @@ class GromacsSimulation(object):
         system_file.write(last_line)
         print("CHEERS: system.gro WAS GENERATED SUCCESSFULLY")
 
-        f1 = open(self.working_dir + 'topol.top', 'r')
-        f2 = open(self.working_dir + 'topol_temp.top', 'w')
+        f1 = open(self.to_wd('topol.top', 'r'))
+        f2 = open(self.to_wd('topol_temp.top', 'w'))
 
         f1.close()
         f2.close()
 
         # swaping the files to get the original file
-        f1 = open(self.working_dir + 'topol.top', 'w')
-        f2 = open(self.working_dir + 'topol_temp.top', 'r')
+        f1 = open(self.to_wd('topol.top', 'w'))
+        f2 = open(self.to_wd('topol_temp.top', 'r'))
         for line in f2:
             f1.write(line)
 
-        #f1.write("UNK        1\n")
+        # f1.write("UNK        1\n")
         f1.close()
         f2.close()
-        os.unlink(self.working_dir + 'topol_temp.top')
+        os.unlink(self.to_wd('topol_temp.top'))
         print("INFO: Topology File Updated with Ligand topology info ")
         print("CHEERS: STEP[2] SUCCESSFULLY COMPLETED :)\n\n\n")
 
@@ -398,8 +393,8 @@ class GromacsSimulation(object):
         # -f system.gro
         command = [
             editconf,
-            "-f", self.working_dir + "protein.gro",
-            "-o", self.working_dir + "newbox.gro",
+            "-f", self.to_wd("protein.gro"),
+            "-o", self.to_wd("newbox.gro"),
             "-bt", "cubic",
             "-d", str(arguments.box_size),
             "-c"
@@ -411,17 +406,24 @@ class GromacsSimulation(object):
         genbox = settings.g_prefix + "genbox"
         step_no = "4"
         step_name = "Solvating the Box"
-        command = genbox + " -cp " + self.working_dir + "newbox.gro -p " + \
-            self.working_dir + "topol.top -cs spc216.gro -o " + \
-            self.working_dir + "solv.gro >> " + self.working_dir + \
-            "step4.log 2>&1"
+        command = [
+            genbox,
+            "-cp", self.to_wd("newbox.gro"),
+            "-p ", self.to_wd("topol.top"),
+            "-cs spc216.gro -o ",
+            self.to_wd("solv.gro")
+        ]
+
         if self.run_process(step_no, step_name, command):
             return 1
 
-        command = "gmx solvate -cp " + self.working_dir + "newbox.gro -p " + \
-            self.working_dir + "topol.top -cs spc216.gro -o " + \
-            self.working_dir + "solv.gro >> " + self.working_dir + \
-            "step4.log 2>&1"
+        command = [
+            "gmx solvate -cp " + self.to_wd("newbox.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-cs spc216.gro",
+            "-o", self.to_wd("solv.gro")
+        ]
+
         return self.run_process(step_no, step_name, command)
 
     def load_mdp(self, mdpname):
@@ -438,7 +440,7 @@ class GromacsSimulation(object):
         shutil.copy2(Source, Target)
 
     def add_ions(self):
-        print(">STEP5 : Initiating Procedure to Add Ions & Neutralise the " \
+        print(">STEP5 : Initiating Procedure to Add Ions & Neutralise the "
               "Complex")
 
         # TODO: Better name. Whats this?
@@ -452,11 +454,11 @@ class GromacsSimulation(object):
 
         command = [
             grompp,
-            "-f", self.working_dir + IONS_MDP,
-            "-c", self.working_dir + "solv.gro",
-            "-p", self.working_dir + "topol.top",
-            "-o", self.working_dir + "ions.tpr",
-            "-po", self.working_dir + "mdout.mdp",
+            "-f", self.to_wd(IONS_MDP),
+            "-c", self.to_wd("solv.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-o", self.to_wd("ions.tpr"),
+            "-po", self.to_wd("mdout.mdp"),
             "-maxwarn", self.maxwarn,
             ">", log_file,
             "2>&1"
@@ -468,7 +470,7 @@ class GromacsSimulation(object):
         # TODO: What is this doing? word??? Better name!
         word = 'total'  # Your word
         charge = 0
-        with open(self.working_dir + 'step5.log') as f:
+        with open(self.to_wd('step5.log')) as f:
             for line in f:
                 if word in line:
                     s_line = line.strip().split()
@@ -484,37 +486,46 @@ class GromacsSimulation(object):
 
         if charge >= 0:
             print("System has positive charge .")
-            print("Adding " + str(charge) + " CL ions to Neutralize the system")
+            print(f"Adding {charge} CL ions to Neutralize the system")
             genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Negative Ions "
-            command = genion + " -s " + self.working_dir + "ions.tpr -o " + \
-                self.working_dir + "solv_ions.gro -p " + self.working_dir + \
-                "topol.top -nname CL -nn " + str(charge) + " >> " + \
-                self.working_dir + "step6.log 2>&1"+\
-                " << EOF\nSOL\nEOF"
+            command = [
+                genion,
+                "-s", self.to_wd("ions.tpr"),
+                "-o", self.to_wd("solv_ions.gro"),
+                "-p", self.to_wd("topol.top"),
+                "-nname CL -nn " + str(charge) + " >>",
+                self.to_wd("step6.log"),
+                "2>&1", "<< EOF\nSOL\nEOF"
+            ]
 
             self.run_process(step_no, step_name, command)
 
         elif charge < 0:
             print("charge is negative")
-            print("Adding " + str(-charge) + " CL ions to Neutralize the system")
+            print(f"Adding {-charge} CL ions to Neutralize the system")
             genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Positive Ions "
             command = [
                 genion,
-                "-s", self.working_dir + "ions.tpr",
-                "-o", self.working_dir + "solv_ions.gro",
-                "-p", self.working_dir + "topol.top -pname NA -np",
-                str(-charge),
+                "-s", self.to_wd("ions.tpr"),
+                "-o", self.to_wd("solv_ions.gro"),
+                "-p", self.to_wd("topol.top"),
+                "-pname", "NA",
+                "-np", str(-charge),
                 "<< EOF\nSOL\nEOF"
             ]
             self.run_process(step_no, step_name, command)
+
         elif charge == 0:
             print("System has Neutral charge , No adjustments Required :)")
             try:
-                shutil.copy(self.working_dir + 'ions.tpr', self.working_dir + "solv_ions.tpr")
+                shutil.copy(
+                    self.to_wd('ions.tpr'),
+                    self.to_wd("solv_ions.tpr")
+                )
             except FileNotFoundError:
                 pass
 
@@ -525,15 +536,17 @@ class GromacsSimulation(object):
         # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
         # mdrun -v -deffnm em
         grompp = settings.g_prefix + "grompp"
-        mdrun = settings.g_prefix + "mdrun"
         step_no = "7"
         step_name = "Prepare files for Minimisation"
         # max warn 3 only for now
-        command = grompp + " -f " + self.working_dir + IONS_MDP + " -c " +\
-            self.working_dir + "solv_ions.gro -p " + self.working_dir\
-            + "topol.top -o " + self.working_dir + "em.tpr -po " +\
-            self.working_dir + "mdout.mdp -maxwarn 3 > " + self.working_dir\
-            + "step7.log 2>&1"
+        command = [
+            grompp + " -f " + self.to_wd(IONS_MDP),
+            "-c", self.to_wd("solv_ions.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-o", self.to_wd("em.tpr"),
+            "-po", self.to_wd("mdout.mdp"),
+            "-maxwarn 3"
+        ]
 
         self.run_process(step_no, step_name, command)
 
@@ -548,25 +561,23 @@ class GromacsSimulation(object):
         print(">STEP9 : Initiating the Procedure to Equilibrate the System")
         print("Beginging Equilibration with NVT Ensemble")
         grompp = settings.g_prefix + "grompp"
-        mdrun = settings.g_prefix + "mdrun"
         step_no = "9"
         step_name = "Preparing files for NVT Equilibration"
 
-        if not (os.path.isfile(self.working_dir + NVT_MDP)):
+        if not os.path.isfile(self.to_wd(NVT_MDP)):
             self.load_mdp(NVT_MDP)
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = [
             grompp,
-            "-f", self.working_dir + "nvt.mdp",
-            "-c", self.working_dir + "em.gro",
-            "-r", self.working_dir + "em.gro",
-            "-p", self.working_dir + "topol.top",
-            "-o", self.working_dir + "nvt.tpr",
-            "-po", self.working_dir + "mdout.mdp",
-            "-maxwarn 3",
-            ">", self.working_dir + "step9.log 2>&1"
-        ]
+            "-f", self.to_wd("nvt.mdp"),
+            "-c", self.to_wd("em.gro"),
+            "-r", self.to_wd("em.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-o", self.to_wd("nvt.tpr"),
+            "-po", self.to_wd("mdout.mdp"),
+            "-maxwarn 3"
+            ]
 
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
@@ -574,7 +585,7 @@ class GromacsSimulation(object):
         step_no = "10"
         step_name = "NVT Equilibration"
         command = self.base_mdrun("nvt")
-        command +=  ["-deffnm", self.working_dir + "nvt"]
+        command += ["-deffnm", self.to_wd("nvt")]
 
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
@@ -583,23 +594,23 @@ class GromacsSimulation(object):
         print(">STEP11 : Initiating the Procedure to Equilibrate the System")
         print("Beginging Equilibration with NPT Ensemble")
         grompp = settings.g_prefix + "grompp"
-        mdrun = settings.g_prefix + "mdrun"
         step_no = "11"
         step_name = "Preparing files for NPT Equilibration"
 
-        if not (os.path.isfile(self.working_dir + "npt.mdp")):
+        if not os.path.isfile(self.to_wd("npt.mdp")):
             self.load_mdp("npt.mdp")
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
-        command = grompp +\
-                  " -f " + self.working_dir + "npt.mdp"+\
-                  " -c " + self.working_dir + "nvt.gro" +\
-                  " -r " + self.working_dir + "nvt.gro" +\
-                  " -p " + self.working_dir + "topol.top" +\
-                  " -o " + self.working_dir + "npt.tpr" +\
-                  " -po "+ self.working_dir + "mdout.mdp" +\
-                  " -maxwarn 3" +\
-                  " > " + self.working_dir + "step11.log 2>&1"
+        command = [
+            grompp,
+            "-f", self.to_wd("npt.mdp"),
+            "-c", self.to_wd("nvt.gro"),
+            "-r", self.to_wd("nvt.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-o", self.to_wd("npt.tpr"),
+            "-po", self.to_wd("mdout.mdp"),
+            "-maxwarn", "3"
+        ]
 
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
@@ -617,17 +628,17 @@ class GromacsSimulation(object):
         step_no = "13"
         step_name = "Preparing files for NPT Equilibration"
 
-        if not (os.path.isfile(self.working_dir + "md.mdp")):
+        if not (os.path.isfile(self.to_wd("md.mdp"))):
             self.load_mdp("md.mdp")
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = [
             grompp,
-            "-f", self.working_dir + "md.mdp",
-            "-c", self.working_dir + "npt.gro",
-            "-p", self.working_dir + "topol.top",
-            "-o", self.working_dir + "md.tpr",
-            "-po", self.working_dir + "mdout.mdp",
+            "-f", self.to_wd("md.mdp"),
+            "-c", self.to_wd("npt.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-o", self.to_wd("md.tpr"),
+            "-po", self.to_wd("mdout.mdp"),
             "-maxwarn", "3"
         ]
 
@@ -670,7 +681,7 @@ class GromacsSimulation(object):
                 "-pme", "gpu",
                 "-pmefft", "gpu",
                 "-bonded", "gpu",
-                #"-update", "gpu"
+                # "-update", "gpu"
             ]
 
         command = " ".join(command)
@@ -727,9 +738,8 @@ class GromacsSimulation(object):
         )
 
     def postprocess(self):
-        trjconv = settings.g_prefix +  "trjconv"
+        trjconv = settings.g_prefix + "trjconv"
         step_no = "POST1"
-        log_file = self.path_log(step_no)
 
         commandA = [
             trjconv,
@@ -771,20 +781,80 @@ class GromacsSimulation(object):
                 Input="0"
             )
 
+    def analysis(self):
+        file_prefix = "mdf"
+        step_no = "ANALYSIS"
+        command = [
+            settings.g_pprefix + "do_dssp",
+            "-f", self.to_wd(file_prefix + ".trr"),
+            "-s", self.to_wd("topol.top")
+        ]
+        self.run_process(
+            step_no,
+            "Analyze results",
+            command,
+            self.path_log(step_no),
+            Input="1"
+        )
+        step_no = "qw"
+
+        command = [
+            settings.g_prefix + "xpm2ps",
+            "-f", self.to_wd("ss.xpm")
+        ]
+
+        self.run_process(
+            step_no,
+            "Convert plot",
+            command,
+            self.path_log(step_no)
+        )
+
     def pca(self):
+        step_no = "covar"
+        SUBDIR = ["PCA"]
+
+        covar = settings.g_prefix + "covar"
+        anaeig = settings.g_prefix + "anaeig"
+
+        EGVAL = self.to_wd("eigenval.xvg", SUBDIR)
+        EGVEC = self.to_wd("eigenvec.trr", SUBDIR)
+
         commandCOV = [
-            "gmx", "covar",
+            covar,
             "-s", "ref.pdb",
-            "-f", "allpdb_bb.xtc"
+            "-f", "allpdb_bb.xtc",
+            "-o", EGVAL,
+            "-v", EGVEC,
+            "-l", self.to_wd("covar.log", SUBDIR),
         ]
 
         commandEIG = [
-            "gmx anaeig",
-            "-s", "ref.pdb",
-            "-f", "allpdb_bb.xtc",
+            anaeig,
+            "-s", self.to_wd("md.gro"),
+            "-f", self.to_wd("mdf.trr"),
+            "-v", EGVEC,
+            "-eig", EGVAL,
             "-extr", "extreme1_xray.pdb",
             "-first", "1", "-last", "1", "-nframes", "30"
         ]
+
+        self.run_process(
+            step_no,
+            "Covariance matrix",
+            commandCOV,
+            self.path_log(step_no),
+            Input="44"
+        )
+
+        step_no = "anaeig"
+        self.run_process(
+            step_no,
+            "Covariance matrix",
+            commandEIG,
+            self.path_log(step_no),
+            Input="44"
+        )
 
 
 class SessionAction(enum.Enum):
@@ -793,6 +863,7 @@ class SessionAction(enum.Enum):
     Resume = 2
     PostProcessOnly = 3
     Dummy = 4
+    AnalysisOnly = 5
 
 
 def session_action_decision(arguments) -> SessionAction:
@@ -912,6 +983,13 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "-A",
+        "--analysis-only",
+        action="store_true",
+        help="Execute analysis steps only."
+    )
+
+    parser.add_argument(
         "--remove-dir",
         dest="RemoveDirectory",
         action="store_true",
@@ -962,6 +1040,10 @@ def run_pipeline(arguments):
         obj.postprocess
     ]
 
+    STEPS_ANALYSIS = [
+        obj.analysis
+    ]
+
     if Action == SessionAction.Resume:
         STEPS = STEPS_RESUME + STEPS_POSTPROCESS
 
@@ -972,6 +1054,9 @@ def run_pipeline(arguments):
 
     elif Action == SessionAction.PostProcessOnly:
         STEPS = STEPS_POSTPROCESS
+
+    elif Action == SessionAction.AnalysisOnly:
+        STEPS = STEPS_ANALYSIS
 
     elif Action == SessionAction.Dummy:
         STEPS = STEPS_GATHER + STEPS_PREPARE
@@ -995,7 +1080,8 @@ def run_pipeline(arguments):
 def main():
     arguments = parse_arguments()
 
-    # FIXME: well...
+    # FIXME: REMOVE ALL INSTANCES OF 'working_dir + <complement>'
+    # to allow the removal of this.
     if arguments.working_dir[-1] != "/":
         arguments.working_dir += "/"
 
