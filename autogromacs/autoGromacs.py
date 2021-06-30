@@ -86,6 +86,22 @@ class GromacsSimulation(object):
             print('Can\'t use both the verbose and quiet flags together')
             sys.exit()
 
+        self.setup_gmx_executables()
+
+    def setup_gmx_executables(self):
+        gmx_commands = [
+            "mdrun",
+            "covar",
+            "grompp",
+            "genion",
+            "do_dssp",
+            "nmeig",
+            "anaeig"
+        ]
+
+        for gmx_command in gmx_commands:
+            setattr(self, gmx_command, settings.g_prefix + gmx_command)
+
     def to_wd(self, f, subdir: List[str] = []) -> str:
         basedir = os.path.join(self.working_dir, *subdir)
         pathlib.Path(basedir).mkdir(parents=True, exist_ok=True)
@@ -227,7 +243,6 @@ class GromacsSimulation(object):
         if self.ligand_file_path and not os.path.isfile(
                 self.ligand_file_path):
             print('Ligand file not found at ', self.ligand_file_path)
-            needStepZero = 1
 
         elif any(
                 not self.ligand_topology_file_path,
@@ -235,7 +250,6 @@ class GromacsSimulation(object):
         ):
             print('Ligand Topology file not found at ',
                   self.ligand_topology_file_path)
-            needStepZero = 1
 
         elif not os.path.isfile(self.protein_file_path):
             print('Protein file not found at ', self.protein_file_path)
@@ -484,6 +498,7 @@ class GromacsSimulation(object):
         charge = float(charge)
         charge = round(charge)
 
+        # TODO: REWORK THIS
         if charge >= 0:
             print("System has positive charge .")
             print(f"Adding {charge} CL ions to Neutralize the system")
@@ -647,7 +662,6 @@ class GromacsSimulation(object):
         self.run_process(step_no, step_name, command, self.path_log(step_no))
 
     def base_mdrun(self, file_prefix="md"):
-        mdrun = settings.g_prefix + "mdrun"
 
         mdrun_arguments_extensions = {
             "-s": ".tpr",
@@ -658,7 +672,7 @@ class GromacsSimulation(object):
             "-g": ".log"
         }
 
-        arguments = [mdrun, "-v"]
+        arguments = [self.mdrun, "-v"]
 
         for arg, ext in mdrun_arguments_extensions.items():
             arguments += [arg, self.to_wd(file_prefix + ext)]
@@ -693,14 +707,13 @@ class GromacsSimulation(object):
         critical_file = self.path_state_file()
         simulation_log = self.path_log("14")
 
-        grompp = settings.g_prefix + "grompp"
         step_no = "14"
         log_file = self.path_log(step_no)
 
         if arguments.refresh_mdp:
             self.load_mdp("md.mdp")
             GP = [
-                grompp,
+                self.grompp,
                 "-f", self.to_wd("md.mdp"),
                 "-c", self.to_wd("md.tpr"),
                 "-p", self.to_wd("topol.top"),
@@ -738,22 +751,19 @@ class GromacsSimulation(object):
         )
 
     def postprocess(self):
-        trjconv = settings.g_prefix + "trjconv"
         step_no = "POST1"
 
         commandA = [
-            trjconv,
+            self.trjconv,
             "-f", self.to_wd("md.trr"),
             "-o", self.to_wd("md5.trr"),
             "-skip", str(5)
         ]
 
-        commandA = " ".join(commandA)
-
         FinalFile = "mdf"
 
         commandB = [
-            trjconv,
+            self.trjconv,
             "-pbc", "mol",
             "-ur", "compact",
             "-f", self.to_wd("md5.trr"),
@@ -761,31 +771,28 @@ class GromacsSimulation(object):
             "-o", self.to_wd(FinalFile + ".trr")
         ]
 
-        commandB = " ".join(commandB)
+        step_no = "POST_SKIP"
+        self.run_process(
+            step_no,
+            "Skip frames",
+            commandA,
+            self.path_log(step_no)
+        )
 
-        if not self.dummy:
-            step_no = "POST_SKIP"
-            self.run_process(
-                step_no,
-                "Skip frames",
-                commandA,
-                self.path_log(step_no)
-            )
-
-            step_no = "POST_PBC"
-            self.run_process(
-                step_no,
-                "Resolve Periodic Boundary Conditions",
-                commandB,
-                self.path_log(step_no),
-                Input="0"
-            )
+        step_no = "POST_PBC"
+        self.run_process(
+            step_no,
+            "Resolve Periodic Boundary Conditions",
+            commandB,
+            self.path_log(step_no),
+            Input="0"
+        )
 
     def analysis(self):
         file_prefix = "mdf"
         step_no = "ANALYSIS"
         command = [
-            settings.g_pprefix + "do_dssp",
+            self.do_dssp,
             "-f", self.to_wd(file_prefix + ".trr"),
             "-s", self.to_wd("topol.top")
         ]
@@ -814,14 +821,11 @@ class GromacsSimulation(object):
         step_no = "covar"
         SUBDIR = ["PCA"]
 
-        covar = settings.g_prefix + "covar"
-        anaeig = settings.g_prefix + "anaeig"
-
         EGVAL = self.to_wd("eigenval.xvg", SUBDIR)
         EGVEC = self.to_wd("eigenvec.trr", SUBDIR)
 
         commandCOV = [
-            covar,
+            self.covar,
             "-s", "ref.pdb",
             "-f", "allpdb_bb.xtc",
             "-o", EGVAL,
@@ -830,7 +834,7 @@ class GromacsSimulation(object):
         ]
 
         commandEIG = [
-            anaeig,
+            self.anaeig,
             "-s", self.to_wd("md.gro"),
             "-f", self.to_wd("mdf.trr"),
             "-v", EGVEC,
@@ -854,6 +858,38 @@ class GromacsSimulation(object):
             commandEIG,
             self.path_log(step_no),
             Input="44"
+        )
+
+    def nma(self):
+        step_no = "RERUN_HESSIAN"
+
+        Hessian = self.to_wd("hessian.mtx", subdirs=["COV"])
+        command = [
+            self.mdrun,
+            "-rerun", self.to_wd("mdf.trr"),
+            "-s", self.to_wd("md.tpr"),
+            "-mtx", Hessian
+        ]
+
+        self.run_process(
+            step_no,
+            "Create Hessian matrix",
+            command,
+            self.path_log(step_no)
+        )
+
+        step_no = "ANALYZE_HESSIAN"
+        command = [
+            self.nmeig,
+            "-f", Hessian,
+            "-s", self.to_wd("md.tpr")
+        ]
+
+        self.run_process(
+            step_no,
+            "Analyze hessian eigenvectors",
+            command,
+            self.path_log(step_no)
         )
 
 
