@@ -14,8 +14,6 @@ from .core.messages import welcome_message
 from .core import settings
 
 
-bashlog = None
-
 IONS_MDP = "ions.mdp"
 EM_MDP = "em.mdp"
 NVT_MDP = "nvt.mdp"
@@ -58,6 +56,8 @@ def read_settings_from_mdp(fpath):
 
 
 class GromacsSimulation(object):
+    bashlog = None
+
     def __init__(self, arguments):
         self.protein_file_path = arguments.protein
         if not self.protein_file_path and not arguments.resume:
@@ -116,7 +116,7 @@ class GromacsSimulation(object):
             contents = f.read()
 
         BASE = '#include "'
-        QUERY = BASE + self.working_dir + "/*"
+        QUERY = BASE + os.path.join(self.working_dir, "*")
 
         print(f"Replace {QUERY} with {BASE}\n\t@{fpath}?")
         if re.findall(QUERY, contents):
@@ -133,8 +133,11 @@ class GromacsSimulation(object):
         else:
             print("Query not found!")
 
-    def path_log(self, n):
-        return self.to_wd(f"step{n}.log")
+    def path_log(self, n, extra: str = ""):
+        m = ""
+        if extra:
+            m = "_" + extra
+        return self.to_wd(f"step{n}{m}.log")
 
     @staticmethod
     def welcome():
@@ -167,8 +170,8 @@ class GromacsSimulation(object):
         if ">" not in command and log_file is not None:
             command += f" >> {log_file} 2>&1"
 
-        if bashlog is not None:
-            bashlog.write("%s\n" % command)
+        if self.bashlog is not None:
+            self.bashlog.write("%s\n" % command)
 
         if self.dummy:
             return
@@ -260,20 +263,18 @@ class GromacsSimulation(object):
 
         pathlib.Path(self.working_dir).mkdir(parents=True, exist_ok=True)
 
-        # FIXME AVOID GLOBALS
-        global bashlog
-        bashlog = open(os.path.join(self.working_dir, 'bashlog'), 'w')
+        self.bashlog = open(self.to_wd('bashlog'), 'w')
 
         print("CHEERS: Working Directory " + self.working_dir +
               " created Successfully")
-        print("Moving the files to Working Directory" + self.working_dir)
+        print("Moving the files to the Working Directory.")
 
-        shutil.copy2(self.protein_file_path, self.working_dir + 'protein.pdb')
+        shutil.copy2(self.protein_file_path, self.to_wd('protein.pdb'))
 
         if self.ligand_file_path:
             shutil.copy2(
                 self.ligand_file_path,
-                self.working_dir + 'ligand.pdb'
+                self.to_wd('ligand.pdb')
             )
         # shutil.copy2(self.ligand_topology_file_path,
         #             self.working_dir + 'ligand.itp')
@@ -296,14 +297,14 @@ class GromacsSimulation(object):
         pdb2gmx = settings.g_prefix + "pdb2gmx"
         step_no = "1"
         step_name = "Topology Generation"
-        log_file = "%sstep1_%s.log" % (self.working_dir, TARGET)
+        log_file = self.path_log(step_no, TARGET)
 
         POSRE_PATH = self.to_wd("posre.itp")
         TOPOL_PATH = self.to_wd("topol.top")
         command = [
             pdb2gmx,
-            "-f", "%s%s.pdb" % (self.working_dir, TARGET),
-            "-o", "%s%s.gro" % (self.working_dir, TARGET),
+            "-f", self.to_wd(TARGET + ".pdb"),
+            "-o", self.to_wd(TARGET + ".gro"),
             "-ignh",
             "-i", POSRE_PATH,
             "-p", TOPOL_PATH,
@@ -1115,11 +1116,6 @@ def run_pipeline(arguments):
 
 def main():
     arguments = parse_arguments()
-
-    # FIXME: REMOVE ALL INSTANCES OF 'working_dir + <complement>'
-    # to allow the removal of this.
-    if arguments.working_dir[-1] != "/":
-        arguments.working_dir += "/"
 
     run_pipeline(arguments)
 
