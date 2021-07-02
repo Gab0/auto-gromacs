@@ -17,11 +17,11 @@ setup(
         'console_scripts': [
             "autogromacs=autogromacs.autoGromacs:main",
             "gromacsfftester=autogromacs.forceFieldCompatTester:main",
-            "mdanalyze=autogromacs.mdanalysis:main"
+            "mdanalyze=autogromacs.mdanalysis:main",
+            "plotxvg=autogromacs.parseXVG:main"
         ]
     },
-	package_data={
-	'': ["mdp/*.mdp"]}
-
-
+    package_data={
+        '': ["mdp/*.mdp"]
+    }
 )

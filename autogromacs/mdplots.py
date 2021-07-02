@@ -29,7 +29,7 @@ def show_matrix(results, labels, filepath: Union[str, None]):
 
     plt.tight_layout()
 
-    execute_output(filepath)
+    execute_output_plot(filepath)
 
 
 def show_rms_series_monolithic(
@@ -74,10 +74,10 @@ def show_rms_series_monolithic(
     ax.legend(labels)
     plt.tight_layout()
 
-    execute_output(filepath)
+    execute_output_plot(filepath)
 
 
-def execute_output(filepath: Optional[str]) -> None:
+def execute_output_plot(filepath: Optional[str]) -> None:
     if filepath is not None:
         plt.savefig(filepath)
     else:
