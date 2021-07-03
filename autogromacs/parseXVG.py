@@ -8,7 +8,7 @@ This module parses simple and multi-data .xvg arrays.
 
 import argparse
 from typing import Optional, List
-from . import mdplots
+from . import mdplots, mdanalysis
 
 
 class XVGParserError(Exception):
@@ -62,11 +62,13 @@ def parse_arguments():
     parser.add_argument("-y", "--ytransform", type=float, default=1.0)
     parser.add_argument("-l", "--label-prefix", dest="label_prefix")
     parser.add_argument("-t", "--totaltime", type=float, default=1.0)
+    parser.add_argument("-o", "--output-filepath", required=True)
+    parser.add_argument("-u", "--uid", required=True)
+
     return parser.parse_args()
 
 
 def main():
-
     arguments = parse_arguments()
 
     for filepath in arguments.filepaths:
@@ -79,10 +81,15 @@ def main():
         ]
         Times = [round(arguments.totaltime) for _, _ in enumerate(YValues)]
 
+        output_filepath = mdanalysis.concat_filepath(
+            arguments.output_filepath,
+            ["ts", arguments.uid]
+        )
+
         mdplots.show_rms_series_stacked(
             YValues,
             Labels,
             Times,
-            filepath + ".png",
+            output_filepath,
             "RMSF"
         )
