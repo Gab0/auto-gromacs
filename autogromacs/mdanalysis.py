@@ -1,4 +1,3 @@
-
 from typing import List, Optional, cast
 import enum
 import argparse
@@ -29,7 +28,8 @@ def parse_arguments():
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
 
     parser.add_argument("-w", dest='WriteOutput', action="store_true")
-    parser.add_argument("-i", dest='OutputIdentifier')
+    parser.add_argument("-i", "--identifier",
+                        dest='OutputIdentifier', required=True)
 
     parser.add_argument('-m', dest='ReferenceMean', action="store_true")
 
@@ -204,6 +204,10 @@ def select_simulation_prefixes(SimulationPrefixes, input_string):
     return OutputPrefixes
 
 
+def concat_filepath(base: str, specifiers: List[str]) -> str:
+    return base + "_" + "_".join(specifiers) + ".png"
+
+
 def build_filepath(
         base: str,
         specifiers: List[str],
@@ -221,7 +225,7 @@ def build_filepath(
         if ID:
             specifiers.append(ID)
 
-        return base + "_" + "_".join(specifiers) + ".png"
+        return concat_filepath(ID, specifiers)
 
     return None
 
@@ -241,6 +245,11 @@ def load_universe(SimulationPrefix, arguments):
     ).run()
 
     return U
+
+
+def show_universe_information(U: mda.Universe):
+    print(f"# Atoms:  {len(U.atoms)}")
+    print(f"# Frames: {len(U.trajectory)}")
 
 
 def analyzeMD(arguments):
@@ -278,6 +287,9 @@ def analyzeMD(arguments):
         for i, SP in enumerate(SimulationPrefixes):
             print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
             u = load_universe(SP, arguments)
+
+            show_universe_information(u)
+
             labels.append(get_label(u))
             rmsd_series.append(time_series_rmsd(u, arguments))
             rmsf_series.append(time_series_rmsf(u))
@@ -294,7 +306,7 @@ def analyzeMD(arguments):
             rmsd_series,
             labels,
             total_times,
-            build_filepath(base_filepath, ["tsp", "rmsd"], arguments),
+            build_filepath(base_filepath, ["ts", "rmsd"], arguments),
             "RMSDt"
         )
 
@@ -322,11 +334,11 @@ def analyzeMD(arguments):
             "RMSF"
         )
 
-        mdplots.show_rms_series_monolithic(
+        mdplots.show_rms_series_stacked(
             pca_series,
             labels,
             total_times,
-            build_filepath(base_filepath, ["tsmono", "pca"], arguments),
+            build_filepath(base_filepath, ["ts", "variance"], arguments),
             "PCA"
         )
 
@@ -394,7 +406,7 @@ def time_series_rmsf(u, end_pct=100) -> List[float]:
     return cast(List[float], rmsf)
 
 
-def analyze_pca(u: mda.Universe):
+def analyze_pca(u: mda.Universe, n=40):
     PCA = pca.PCA(u, select='backbone')
     space = PCA.run()
 
@@ -402,7 +414,10 @@ def analyze_pca(u: mda.Universe):
     w = pca.cosine_content(space_3, 0)
     print(w)
 
-    return space.cumulated_variance[:40]
+    return [
+        space.variance[:n],
+        space.cumulated_variance[:n]
+    ]
 
 
 def main():
