@@ -96,7 +96,8 @@ class GromacsSimulation(object):
             "genion",
             "do_dssp",
             "nmeig",
-            "anaeig"
+            "anaeig",
+            "trjconv"
         ]
 
         for gmx_command in gmx_commands:
@@ -247,10 +248,10 @@ class GromacsSimulation(object):
                 self.ligand_file_path):
             print('Ligand file not found at ', self.ligand_file_path)
 
-        elif any(
-                not self.ligand_topology_file_path,
-                not os.path.isfile(self.ligand_topology_file_path)
-        ):
+        elif any((
+                    not self.ligand_topology_file_path,
+                    not os.path.isfile(self.ligand_topology_file_path)
+                )):
             print('Ligand Topology file not found at ',
                   self.ligand_topology_file_path)
 
@@ -795,8 +796,10 @@ class GromacsSimulation(object):
         command = [
             self.do_dssp,
             "-f", self.to_wd(file_prefix + ".trr"),
-            "-s", self.to_wd("topol.top")
+            "-s", self.to_wd("md.gro")
         ]
+
+        os.environ["DSSP"] = "/usr/bin/mkdssp"
         self.run_process(
             step_no,
             "Analyze results",
@@ -916,6 +919,8 @@ def session_action_decision(arguments) -> SessionAction:
         if F.endswith("md.gro"):
             if arguments.postprocess_only:
                 return SessionAction.PostProcessOnly
+            if arguments.analysis_only:
+                return SessionAction.AnalysisOnly
             return SessionAction.Nothing
 
         elif F.endswith("md.trr"):
@@ -1078,7 +1083,8 @@ def run_pipeline(arguments):
     ]
 
     STEPS_ANALYSIS = [
-        obj.analysis
+        obj.analysis,
+        obj.pca
     ]
 
     if Action == SessionAction.Resume:
