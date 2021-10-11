@@ -37,10 +37,10 @@ def process_label_names(mode: str):
     def to_time_x(X, t):
         return frames_to_time(X, t)
 
-    def _(X, t):
+    def _(X, _):
         return X
 
-    YL = r"Distância ($\AA$)"
+    YL = r"$\Delta$ RMSD ($\AA$)"
     make_x = _
     if mode == "RMSDt":
         XL = "Tempo (ns)"
