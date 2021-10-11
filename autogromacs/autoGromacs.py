@@ -671,7 +671,8 @@ class GromacsSimulation(object):
             "-o": ".trr",
             "-e": ".edr",
             "-x": ".xtc",
-            "-g": ".log"
+            "-g": ".log",
+            "-mtx": ".mtx"
         }
 
         arguments = [self.mdrun, "-v"]
@@ -697,7 +698,7 @@ class GromacsSimulation(object):
                 "-pme", "gpu",
                 "-pmefft", "gpu",
                 "-bonded", "gpu",
-                # "-update", "gpu"
+                # "-update", "gpu",
             ]
 
         command = " ".join(command)
