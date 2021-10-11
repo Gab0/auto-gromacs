@@ -14,6 +14,8 @@ import numpy.linalg
 
 from . import mdplots
 
+from umap import umap_ as umap
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
