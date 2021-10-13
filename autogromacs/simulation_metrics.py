@@ -13,7 +13,7 @@ def parse_arguments():
     parser.add_argument("-d", dest="directory")
     parser.add_argument("-r", dest="reference_structure")
     parser.add_argument("-o", dest="output_file")
-
+    parser.add_argument("-m", dest="all_mutations_file")
     return parser.parse_args()
 
 
@@ -63,6 +63,7 @@ def analyze_directory(options):
 
     reference_sequence = StructureMutator.loadStructureSequence(options.reference_structure)
     print(reference_sequence)
+    all_mutations = set()
     data = []
 
     subdirectories = sorted(
@@ -94,14 +95,15 @@ def analyze_directory(options):
             # FIXME: Solve StructureMutator so this is not needed!
             for mut in structure_mutations:
                 mut.fromAA = mut.fromAA[-1]
-
+                all_mutations.add(mut)
         except IndexError:
             if len_a == len_b:
                 raise
 
-            print("ERROR: Incompatible protein lengths." +
-                  f"{len_a} vs {len_b}"
-                  )
+            print(
+                "ERROR: Incompatible protein lengths." +
+                f"{len_a} vs {len_b}"
+            )
 
         w = {
             "Nome": process_categorized_simulation_name(subdirectory),
@@ -123,6 +125,11 @@ def analyze_directory(options):
             df[col] = df[col].round(3)
 
     df.to_csv(options.output_file, index=False)
+
+    if options.all_mutations_file:
+        with open(options.all_mutations_file, 'w') as f:
+            w = "\n".join(mut.show() for mut in all_mutations)
+            f.write(w)
 
 
 def main():
