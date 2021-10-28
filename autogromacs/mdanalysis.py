@@ -232,11 +232,11 @@ def build_filepath(
     return None
 
 
-def load_universe(SimulationPrefix, arguments):
+def load_universe(SimulationPrefix, traj_suffix):
 
     U = mda.Universe(
         SimulationPrefix + ".gro",
-        SimulationPrefix + arguments.TrajSuffix + ".trr"
+        SimulationPrefix + traj_suffix + ".trr"
     )
 
     align.AlignTraj(
@@ -288,7 +288,7 @@ def analyzeMD(arguments):
 
         for i, SP in enumerate(SimulationPrefixes):
             print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
-            u = load_universe(SP, arguments)
+            u = load_universe(SP, arguments.trajSuffix)
 
             show_universe_information(u)
 
