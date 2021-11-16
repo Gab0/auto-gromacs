@@ -5,7 +5,9 @@ import os
 
 
 def read_settings_from_mdp(fpath, overrides={}):
-    pattern = r"([\w\-\_]+)[\t ]*=[\t ]*([\w\d\.\-\_\s]+)[\t ]*;*(.*)"
+    varname = r"([\w\-\_]+)[\t ]*"
+    value = r"=[\t ]*([\w\d\.\-\_\s]+)[\t ]*;*(.*)"
+    pattern = varname + value
     with open(fpath) as mdp:
         for line in mdp.read().splitlines():
             cat = re.findall(pattern, line)
@@ -91,19 +93,30 @@ def load_mdp(self, arguments, mdpname):
         Source = os.path.join(self.module_dir, "mdp", mdpname)
 
     Target = os.path.join(self.working_dir, mdpname)
-    settings = read_settings_from_mdp(Source, overrides)
+    settings = list(read_settings_from_mdp(Source, overrides))
+    print(len(settings))
     write_mdp(Target, settings)
     # shutil.copy2(Source, Target)
 
+
 def write_mdp(fpath, settings):
+    longest_name = max([len(x) for x, y, z in settings])
+    longest_var = max([len(y) for x, y, z in settings])
     with open(fpath, 'w') as f:
         for parameter, value, comment in settings:
-            f.write(f"{parameter}\t\t=\t{value}\n")
+            name_spacer = longest_name - len(parameter) + 4
+            var_spacer = longest_var - len(parameter) + 4
+            line = [
+                f"{parameter}{name_spacer * ' '}",
+                f"={4 * ' '}{value}{var_spacer}",
+                f"; {comment}\n"
+            ]
+            f.write("".join(line))
 
 
 def load_mdp_overrides_from_options(options, prefix) -> Dict[str, str]:
     overrides = {}
-    m = "Override" + prefix
+    m = "Override" + prefix.upper()
     for p in dir(options):
         if p.startswith(m):
             variable_name = p.replace(m, "")

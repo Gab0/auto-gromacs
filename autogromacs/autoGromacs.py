@@ -1000,7 +1000,6 @@ def run_pipeline(arguments):
         obj.nvt,
         obj.npt,
         obj.initmd,
-        mdp_control.build_settings_summary,
         obj.md,
         obj.postprocess,
     ]
@@ -1049,6 +1048,7 @@ def run_pipeline(arguments):
             STEP(arguments)
         else:
             STEP()
+    mdp_control.build_settings_summary(obj, arguments)
 
 
 def main():
