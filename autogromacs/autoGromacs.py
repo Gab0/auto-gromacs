@@ -13,6 +13,7 @@ from typing import List, Union, Optional
 from .core.messages import welcome_message
 from .core import settings
 
+from . import mdp_control
 
 IONS_MDP = "ions.mdp"
 EM_MDP = "em.mdp"
@@ -43,16 +44,6 @@ def handle_error(ERROR, step_no, log_file=None):
             print("HEADS UP: Command failed for Step %s: return code %i."
                   % (step_no, ERROR))
             sys.exit(ERROR)
-
-
-def read_settings_from_mdp(fpath):
-    pattern = r"(\w+)[\t ]*=[\t ]*([\w\d\.]+)[\t ]*;*"
-    with open(fpath) as mdp:
-        for line in mdp.read().splitlines():
-            cat = re.findall(pattern, line)
-            if cat:
-                name, parameter = cat[0]
-                yield name, parameter
 
 
 class GromacsSimulation(object):
@@ -187,61 +178,6 @@ class GromacsSimulation(object):
 
         handle_error(ret.returncode, step_no, log_file)
 
-    def build_settings_summary(self, arguments):
-        settings_file = "settings.csv"
-
-        Summary = {
-            "force field": arguments.FF,
-            "water model": arguments.solvent
-        }
-
-        mdp_prefixes = [
-            "ions",
-            "nvt",
-            "npt",
-            "md"
-        ]
-
-        header = ["Stage", "Parameter", "Value"]
-        mdp_parameters = []
-
-        for k in sorted(Summary.keys()):
-            mdp_parameters.append(["*", k, Summary[k]])
-
-        for mdp_prefix in mdp_prefixes:
-            data = read_settings_from_mdp(
-                self.to_wd(mdp_prefix + ".mdp"))
-            for param, value in data:
-                k = [mdp_prefix.upper(), param, value]
-                mdp_parameters.append(k)
-
-        mdp_parameters = self.compact_parameter_list(mdp_parameters)
-        with open(self.to_wd(settings_file), 'w') as f:
-            for parameter in [header] + mdp_parameters:
-                f.write(",".join(parameter) + "\n")
-
-    def compact_parameter_list(self, parameters):
-        compat = {}
-
-        def make_key(parameter, value):
-            return f"{parameter}:{value}"
-
-        for stage, parameter, value in parameters:
-            K = make_key(parameter, value)
-            if K not in compat.keys():
-                compat[K] = []
-            compat[K].append(stage)
-
-        output_parameters = []
-        for stage, parameter, value in parameters:
-            K = make_key(parameter, value)
-            if K in compat.keys():
-                stages = compat[K]
-                message = "+".join(stages)
-                output_parameters.append([message, parameter, value])
-                del compat[K]
-
-        return output_parameters
 
     def gather_files(self):
         if self.ligand_file_path and not os.path.isfile(
@@ -442,20 +378,7 @@ class GromacsSimulation(object):
 
         return self.run_process(step_no, step_name, command)
 
-    def load_mdp(self, mdpname):
-
-        if os.path.isfile(mdpname):
-            print(">Using user-defined %s" % mdpname)
-            Source = mdpname
-        else:
-            print(">Writing built-in %s" % mdpname)
-            Source = os.path.join(self.module_dir, "mdp", mdpname)
-
-        Target = os.path.join(self.working_dir, mdpname)
-
-        shutil.copy2(Source, Target)
-
-    def add_ions(self):
+    def add_ions(self, arguments):
         print(">STEP5 : Initiating Procedure to Add Ions & Neutralise the "
               "Complex")
 
@@ -466,7 +389,7 @@ class GromacsSimulation(object):
 
         log_file = self.path_log(step_no)
 
-        self.load_mdp(IONS_MDP)
+        mdp_control.load_mdp(self, arguments, IONS_MDP)
 
         command = [
             grompp,
@@ -582,7 +505,7 @@ class GromacsSimulation(object):
         step_name = "Preparing files for NVT Equilibration"
 
         if not os.path.isfile(self.to_wd(NVT_MDP)):
-            self.load_mdp(NVT_MDP)
+            mdp_control.load_mdp(self, arguments, NVT_MDP)
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = [
@@ -615,7 +538,7 @@ class GromacsSimulation(object):
         step_name = "Preparing files for NPT Equilibration"
 
         if not os.path.isfile(self.to_wd("npt.mdp")):
-            self.load_mdp("npt.mdp")
+            mdp_control.load_mdp(self, arguments, "npt.mdp")
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = [
@@ -639,14 +562,14 @@ class GromacsSimulation(object):
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
 
-    def initmd(self):
+    def initmd(self, arguments):
         print(">STEP13 : Initiating the Production Run")
         grompp = settings.g_prefix + "grompp"
         step_no = "13"
         step_name = "Preparing files for NPT Equilibration"
 
         if not (os.path.isfile(self.to_wd("md.mdp"))):
-            self.load_mdp("md.mdp")
+            mdp_control.load_mdp(self, arguments, "md.mdp")
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = [
@@ -714,7 +637,7 @@ class GromacsSimulation(object):
         log_file = self.path_log(step_no)
 
         if arguments.refresh_mdp:
-            self.load_mdp("md.mdp")
+            mdp_control.load_mdp(self, arguments, "md.mdp")
             GP = [
                 self.grompp,
                 "-f", self.to_wd("md.mdp"),
@@ -724,8 +647,12 @@ class GromacsSimulation(object):
             ]
 
             step_no = "14.1"
-            self.run_process(step_no, "Update simulation", " ".join(GP),
-                             self.path_log(step_no))
+            self.run_process(
+                step_no,
+                "Update simulation",
+                " ".join(GP),
+                self.path_log(step_no)
+            )
 
         if not os.path.isfile(critical_file):
             print(f"RESUME {critical_file} FILE NOT FOUND.")
@@ -1039,6 +966,9 @@ def parse_arguments():
         help="Force removal of existing working directory."
     )
 
+    mdp_control.add_option_override(parser, "MD", "dt")
+    mdp_control.add_option_override(parser, "MD", "nsteps")
+
     return parser.parse_args()
 
 
@@ -1070,7 +1000,7 @@ def run_pipeline(arguments):
         obj.nvt,
         obj.npt,
         obj.initmd,
-        obj.build_settings_summary,
+        mdp_control.build_settings_summary,
         obj.md,
         obj.postprocess,
     ]
