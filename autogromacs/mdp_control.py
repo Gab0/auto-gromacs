@@ -2,7 +2,6 @@
 from typing import Dict
 import re
 import os
-import shutil
 
 
 def read_settings_from_mdp(fpath, overrides={}):
@@ -16,7 +15,7 @@ def read_settings_from_mdp(fpath, overrides={}):
                 for o_name, o_parameter in overrides.items():
                     if name == o_name:
                         parameter = o_parameter
-                yield name, parameter
+                yield name, parameter, comment
 
 
 def build_settings_summary(self, arguments):
@@ -98,8 +97,8 @@ def load_mdp(self, arguments, mdpname):
 
 def write_mdp(fpath, settings):
     with open(fpath, 'w') as f:
-        for parameter, value in settings:
-            f.write(f"{parameter}\t={value}\n")
+        for parameter, value, comment in settings:
+            f.write(f"{parameter}\t\t=\t{value}\n")
 
 
 def load_mdp_overrides_from_options(options, prefix) -> Dict[str, str]:
@@ -118,7 +117,7 @@ def load_mdp_overrides_from_options(options, prefix) -> Dict[str, str]:
 def add_option_override(parser, prefix, parameter):
     parser.add_argument(
         f"--{prefix.lower()}-{parameter}",
-        dest="Override{prefix.upper()}{parameter}",
+        dest=f"Override{prefix.upper()}{parameter}",
         type=int,
         help=f"Override the '{parameter}' parameter"
         f"inside the .mdp files for the {prefix} step."
