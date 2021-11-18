@@ -44,11 +44,11 @@ def build_settings_summary(self, arguments):
     for mdp_prefix in mdp_prefixes:
         data = read_settings_from_mdp(
             self.to_wd(mdp_prefix + ".mdp"))
-        for param, value in data:
+        for param, value, comment in data:
             k = [mdp_prefix.upper(), param, value]
             mdp_parameters.append(k)
 
-    mdp_parameters = self.compact_parameter_list(mdp_parameters)
+    mdp_parameters = compact_parameter_list(mdp_parameters)
     with open(self.to_wd(settings_file), 'w') as f:
         for parameter in [header] + mdp_parameters:
             f.write(",".join(parameter) + "\n")
@@ -94,21 +94,21 @@ def load_mdp(self, arguments, mdpname):
 
     Target = os.path.join(self.working_dir, mdpname)
     settings = list(read_settings_from_mdp(Source, overrides))
-    print(len(settings))
+
     write_mdp(Target, settings)
     # shutil.copy2(Source, Target)
 
 
 def write_mdp(fpath, settings):
     longest_name = max([len(x) for x, y, z in settings])
-    longest_var = max([len(y) for x, y, z in settings])
+    longest_var = max([len(str(y)) for x, y, z in settings])
     with open(fpath, 'w') as f:
         for parameter, value, comment in settings:
             name_spacer = longest_name - len(parameter) + 4
             var_spacer = longest_var - len(parameter) + 4
             line = [
                 f"{parameter}{name_spacer * ' '}",
-                f"={4 * ' '}{value}{var_spacer}",
+                f"={4 * ' '}{value}{var_spacer * ' '}",
                 f"; {comment}\n"
             ]
             f.write("".join(line))

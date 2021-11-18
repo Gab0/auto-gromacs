@@ -178,7 +178,6 @@ class GromacsSimulation(object):
 
         handle_error(ret.returncode, step_no, log_file)
 
-
     def gather_files(self):
         if self.ligand_file_path and not os.path.isfile(
                 self.ligand_file_path):
@@ -878,19 +877,46 @@ def backup_existing_directory(working_dir):
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-l', '--ligand',
-                        help='Input a ligand file [*.gro]')
-    parser.add_argument('-i', '--itp', dest="ligand_topology",
-                        help='Input a ligand topology file [*.itp]')
-    parser.add_argument('-p', '--protein',
-                        help='Input a protein file (default:protein.pdb)')
-    parser.add_argument('-w', '--wdir', dest="working_dir",
-                        help='Working Directory of project (default:work)',
-                        default='work')
-    parser.add_argument('-v', '--verbose', help='Loud and Noisy[default]',
-                        action="store_true")
-    parser.add_argument('-q', '--quiet', help='Be very quit',
-                        action="store_true")
+    parser.add_argument(
+        '-l',
+        '--ligand',
+        help='Input a ligand file [*.gro]'
+    )
+
+    parser.add_argument(
+        '-i',
+        '--itp',
+        dest="ligand_topology",
+        help='Input a ligand topology file [*.itp]'
+    )
+
+    parser.add_argument(
+        '-p',
+        '--protein',
+        help='Input a protein file (default:protein.pdb)'
+    )
+
+    parser.add_argument(
+        '-w',
+        '--wdir',
+        dest="working_dir",
+        help='Working Directory of project (default:work)',
+        default='work'
+    )
+
+    parser.add_argument(
+        '-v',
+        '--verbose',
+        help='Loud and Noisy[default]',
+        action="store_true"
+    )
+
+    parser.add_argument(
+        '-q',
+        '--quiet',
+        help='Be very quiet.',
+        action="store_true"
+    )
 
     parser.add_argument(
         '--force-field',
@@ -968,6 +994,9 @@ def parse_arguments():
 
     mdp_control.add_option_override(parser, "MD", "dt")
     mdp_control.add_option_override(parser, "MD", "nsteps")
+    mdp_control.add_option_override(parser, "NVT", "nsteps")
+    mdp_control.add_option_override(parser, "NPT", "nsteps")
+    mdp_control.add_option_override(parser, "IONS", "nsteps")
 
     return parser.parse_args()
 
