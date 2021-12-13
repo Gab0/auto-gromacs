@@ -692,15 +692,13 @@ class GromacsSimulation(object):
             "-skip", str(5)
         ]
 
-        FinalFile = "mdf"
-
         commandB = [
             self.trjconv,
             "-pbc", "mol",
             "-ur", "compact",
             "-f", self.to_wd("md5.trr"),
             "-s", self.to_wd("md.tpr"),
-            "-o", self.to_wd(FinalFile + ".trr")
+            "-o", self.to_wd(self.downsample_prefix + ".trr")
         ]
 
         step_no = "POST_SKIP"
@@ -741,7 +739,8 @@ class GromacsSimulation(object):
 
         command = [
             settings.g_prefix + "xpm2ps",
-            "-f", self.to_wd("ss.xpm")
+            "-f", self.to_wd("ss.xpm"),
+            "-o", self.to_wd("plot.eps")
         ]
 
         self.run_process(
@@ -773,8 +772,10 @@ class GromacsSimulation(object):
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
             "-v", EGVEC,
             "-eig", EGVAL,
-            "-extr", "extreme1_xray.pdb",
-            "-first", "1", "-last", "1", "-nframes", "30"
+            "-extr", self.to_wd("extreme1_xray.pdb", SUBDIR),
+            "-first", "1",
+            "-last", "1",
+            "-nframes", "30"
         ]
 
         self.run_process(
@@ -800,7 +801,7 @@ class GromacsSimulation(object):
         Hessian = self.to_wd("hessian.mtx", subdirs=["COV"])
         command = [
             self.mdrun,
-            "-rerun", self.to_wd("mdf.trr"),
+            "-rerun", self.to_wd(self.downsample_prefix + ".trr"),
             "-s", self.to_wd("md.tpr"),
             "-mtx", Hessian
         ]
