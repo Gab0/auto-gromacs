@@ -79,6 +79,9 @@ class GromacsSimulation(object):
 
         self.setup_gmx_executables()
 
+        # FIXME: Organize these variables:
+        self.downsample_prefix = "mdf"
+
     def setup_gmx_executables(self):
         gmx_commands = [
             "mdrun",
@@ -718,12 +721,12 @@ class GromacsSimulation(object):
         )
 
     def analysis(self):
-        file_prefix = "mdf"
         step_no = "ANALYSIS"
         command = [
             self.do_dssp,
-            "-f", self.to_wd(file_prefix + ".trr"),
-            "-s", self.to_wd("md.gro")
+            "-f", self.to_wd(self.downsample_prefix + ".trr"),
+            "-s", self.to_wd("md.gro"),
+            "-a", self.to_wd("ss.xpm")
         ]
 
         os.environ["DSSP"] = "/usr/bin/mkdssp"
@@ -757,8 +760,8 @@ class GromacsSimulation(object):
 
         commandCOV = [
             self.covar,
-            "-s", "ref.pdb",
-            "-f", "allpdb_bb.xtc",
+            "-s", self.to_wd("md.gro"),
+            "-f", self.to_wd(self.downsample_prefix + ".trr"),
             "-o", EGVAL,
             "-v", EGVEC,
             "-l", self.to_wd("covar.log", SUBDIR),
@@ -767,7 +770,7 @@ class GromacsSimulation(object):
         commandEIG = [
             self.anaeig,
             "-s", self.to_wd("md.gro"),
-            "-f", self.to_wd("mdf.trr"),
+            "-f", self.to_wd(self.downsample_prefix + ".trr"),
             "-v", EGVEC,
             "-eig", EGVAL,
             "-extr", "extreme1_xray.pdb",
@@ -779,7 +782,7 @@ class GromacsSimulation(object):
             "Covariance matrix",
             commandCOV,
             self.path_log(step_no),
-            Input="44"
+            Input="4\n4"
         )
 
         step_no = "anaeig"
@@ -788,7 +791,7 @@ class GromacsSimulation(object):
             "Covariance matrix",
             commandEIG,
             self.path_log(step_no),
-            Input="44"
+            Input="4\n4"
         )
 
     def nma(self):
@@ -1077,6 +1080,8 @@ def run_pipeline(arguments):
             STEP(arguments)
         else:
             STEP()
+
+    # -- Create MDP settings summary.
     mdp_control.build_settings_summary(obj, arguments)
 
 
