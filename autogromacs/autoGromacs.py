@@ -1,4 +1,5 @@
 #!/bin/python
+from typing import Tuple
 import enum
 import shutil
 import argparse
@@ -28,7 +29,7 @@ def message(func, message):
 
 def handle_error(ERROR, step_no, log_file=None):
     if ERROR == 0:
-        print('STEP%s Completed!' % step_no)
+        print('STEP %s Completed!' % step_no)
         print("")
         return
     else:
@@ -51,9 +52,6 @@ class GromacsSimulation(object):
 
     def __init__(self, arguments):
         self.protein_file_path = arguments.protein
-        if not self.protein_file_path and not arguments.resume:
-            print("No input protein specified.")
-            sys.exit(1)
 
         self.ligand_file_path = arguments.ligand
         if not self.ligand_file_path:
@@ -750,6 +748,29 @@ class GromacsSimulation(object):
             self.path_log(step_no)
         )
 
+    def do_anaeig(self, step_no, EGVEC, EGVAL, vecs: Tuple[int, int], output_file):
+        svecs = [str(v) for v in vecs]
+
+        commandEIG = [
+            self.anaeig,
+            "-s", self.to_wd("md.gro"),
+            "-f", self.to_wd(self.downsample_prefix + ".trr"),
+            "-v", EGVEC,
+            "-eig", EGVAL,
+            "-extr", output_file,
+            "-first", svecs[0],
+            "-last", svecs[1],
+            "-nframes", "30"
+        ]
+        step_no += "-".join(svecs)
+        self.run_process(
+            step_no,
+            "Covariance matrix",
+            commandEIG,
+            self.path_log(step_no),
+            Input="4\n4"
+        )
+
     def pca(self):
         step_no = "covar"
         SUBDIR = ["PCA"]
@@ -766,18 +787,6 @@ class GromacsSimulation(object):
             "-l", self.to_wd("covar.log", SUBDIR),
         ]
 
-        commandEIG = [
-            self.anaeig,
-            "-s", self.to_wd("md.gro"),
-            "-f", self.to_wd(self.downsample_prefix + ".trr"),
-            "-v", EGVEC,
-            "-eig", EGVAL,
-            "-extr", self.to_wd("extreme1_xray.pdb", SUBDIR),
-            "-first", "1",
-            "-last", "1",
-            "-nframes", "30"
-        ]
-
         self.run_process(
             step_no,
             "Covariance matrix",
@@ -786,13 +795,11 @@ class GromacsSimulation(object):
             Input="4\n4"
         )
 
-        step_no = "anaeig"
-        self.run_process(
-            step_no,
-            "Covariance matrix",
-            commandEIG,
-            self.path_log(step_no),
-            Input="4\n4"
+        self.do_anaeig(
+            "anaeig",
+            EGVEC, EGVAL,
+            (1, 2),
+            self.to_wd("extreme.pdb", SUBDIR)
         )
 
     def nma(self):
@@ -897,7 +904,8 @@ def parse_arguments():
     parser.add_argument(
         '-p',
         '--protein',
-        help='Input a protein file (default:protein.pdb)'
+        default="protein.pdb",
+        help='Input a protein file'
     )
 
     parser.add_argument(
@@ -1050,6 +1058,7 @@ def run_pipeline(arguments):
         obj.pca
     ]
 
+    RequirePDB = False
     if Action == SessionAction.Resume:
         STEPS = STEPS_RESUME + STEPS_POSTPROCESS
 
@@ -1065,13 +1074,20 @@ def run_pipeline(arguments):
         STEPS = STEPS_ANALYSIS
 
     elif Action == SessionAction.Dummy:
+        RequirePDB = True
         STEPS = STEPS_GATHER + STEPS_PREPARE
 
     elif Action == SessionAction.New:
+        RequirePDB = True
         STEPS = STEPS_GATHER + \
             STEPS_PREPARE + \
             STEPS_EXECUTE + \
             STEPS_POSTPROCESS
+
+    if RequirePDB:
+        if not obj.protein_file_path:
+            print("No input protein specified.")
+            sys.exit(1)
 
     for STEP in STEPS:
         now = datetime.datetime.now().strftime("%H:%M:%S")
