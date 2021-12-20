@@ -604,7 +604,9 @@ class GromacsSimulation(object):
             arguments += [arg, self.to_wd(file_prefix + ext)]
 
         arguments += [
-            "-cpo", self.path_state_file()
+            "-cpo", self.path_state_file(),
+            "-ntmpi", "4",
+            "-ntomp", "6"
         ]
 
         return arguments
@@ -722,7 +724,8 @@ class GromacsSimulation(object):
             self.do_dssp,
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
             "-s", self.to_wd("md.gro"),
-            "-a", self.to_wd("ss.xpm")
+            "-o", self.to_wd("ss.xpm"),
+            "-sc", self.to_wd("scount.xvg")
         ]
 
         os.environ["DSSP"] = "/usr/bin/mkdssp"
@@ -782,6 +785,7 @@ class GromacsSimulation(object):
             self.covar,
             "-s", self.to_wd("md.gro"),
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
+            "-av", self.to_wd("average.pdb", SUBDIR),
             "-o", EGVAL,
             "-v", EGVEC,
             "-l", self.to_wd("covar.log", SUBDIR),
