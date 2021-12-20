@@ -288,7 +288,7 @@ def analyzeMD(arguments):
 
         for i, SP in enumerate(SimulationPrefixes):
             print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
-            u = load_universe(SP, arguments.trajSuffix)
+            u = load_universe(SP, arguments.TrajSuffix)
 
             show_universe_information(u)
 
@@ -304,45 +304,49 @@ def analyzeMD(arguments):
             u.trajectory.close()
             del u
 
-        mdplots.show_rms_series_stacked(
-            rmsd_series,
-            labels,
-            total_times,
-            build_filepath(base_filepath, ["ts", "rmsd"], arguments),
-            "RMSDt"
-        )
+        if True:
+            mdplots.show_rms_series_stacked(
+                rmsd_series,
+                labels,
+                total_times,
+                build_filepath(base_filepath, ["ts", "rmsd"], arguments),
+                "RMSDt"
+            )
 
-        mdplots.show_rms_series_monolithic(
-            rmsd_series,
-            labels,
-            total_times,
-            build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
-            "RMSDt"
-        )
+            mdplots.show_rms_series_stacked(
+                rmsf_series,
+                labels,
+                total_times,
+                build_filepath(base_filepath, ["ts", "rmsf"], arguments),
+                "RMSF"
+            )
 
-        mdplots.show_rms_series_stacked(
-            rmsf_series,
-            labels,
-            total_times,
-            build_filepath(base_filepath, ["ts", "rmsf"], arguments),
-            "RMSF"
-        )
+            mdplots.show_rms_series_stacked(
+                pca_series,
+                labels,
+                total_times,
+                build_filepath(base_filepath, ["ts", "variance"], arguments),
+                "PCA"
+            )
 
-        mdplots.show_rms_series_monolithic(
-            rmsf_series,
-            labels,
-            total_times,
-            build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
-            "RMSF"
-        )
 
-        mdplots.show_rms_series_stacked(
-            pca_series,
-            labels,
-            total_times,
-            build_filepath(base_filepath, ["ts", "variance"], arguments),
-            "PCA"
-        )
+        if False:
+            mdplots.show_rms_series_monolithic(
+                rmsd_series,
+                labels,
+                total_times,
+                build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
+                "RMSDt"
+            )
+
+            mdplots.show_rms_series_monolithic(
+                rmsf_series,
+                labels,
+                total_times,
+                build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
+                "RMSF"
+            )
+
 
 
 class AlignType(enum.Enum):
@@ -387,7 +391,6 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
 
     ref, atoms = align_universe(u, AlignType.FIRST_FRAME)
     for t, traj in enumerate(u.trajectory):
-
         if verbose:
             print(f"{t} of {J}")
 

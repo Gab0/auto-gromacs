@@ -2,6 +2,7 @@ from typing import List, Union, Optional
 
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.units as munits
 
 import numpy as np
 import pandas as pd
@@ -148,6 +149,13 @@ def show_rms_series_stacked(
 
     N = Values.shape[-1]
 
+    def plot_bar(ax, X, Y, style, color):
+        ax.bar(X, Y, color=color)
+
+    def plot_line(ax, X, Y, style, color):
+        ax.plot(X, Y, style, color=color)
+
+    stacked_fn = [plot_bar, plot_line]
     for i, (Y, label) in enumerate(zip(rms_series, labels)):
 
         XL, YL, make_x = process_label_names(mode)
@@ -160,17 +168,24 @@ def show_rms_series_stacked(
         if Values.ndim == 3:
             colors = ["black", "orange"]
             styles = ["-", "--"]
-            IN = False
-            for sY, style, color in zip(Y, styles, colors):
-                if IN:
+            INITIALIZED = False
+            for sY, plot_fn, style, color in zip(Y, stacked_fn, styles, colors):
+                if INITIALIZED:
                     cax = axk[i].twinx()
+
                     hide_ax_ticks(cax)
                 else:
                     cax = axk[i]
+                try:
+                    plot_fn(cax, X, sY, style, color)
+                except munits.ConversionError as e:
+                    print(X)
+                    print(sY)
+                    assert len(X) == len(sY)
+                    raise(e)
 
-                cax.plot(X, sY, style, color=color)
                 enforce_ax_ticks(cax, round(max(sY)), round(max(sY)))
-                IN = True
+                INITIALIZED = True
 
         elif Values.ndim == 2:
             axk[i].plot(X, Y, "b-", color="black")
