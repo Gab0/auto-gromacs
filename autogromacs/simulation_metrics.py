@@ -1,4 +1,8 @@
+"""
+This module handles simulation name handling
+and batch analysis for simulation directories.
 
+"""
 import re
 import os
 import argparse
@@ -33,6 +37,13 @@ def process_categorized_simulation_name(name):
 
     for word, repl in replacements.items():
         name = re.sub(word, repl + " ", name)
+
+    domain_pattern = r"^(\w)_"
+    domains = re.findall(domain_pattern, name)
+
+    if domains:
+        name += f", domínio {domains[0]}"
+        name = re.sub(domain_pattern, "", name)
 
     return name
 
@@ -94,6 +105,8 @@ def analyze_directory(options):
 
             # FIXME: Solve StructureMutator so this is not needed!
             for mut in structure_mutations:
+                if not mut.fromAA == mut.fromAA[-1]:
+                    print("WARNING: Weird mut.fromAA value.")
                 mut.fromAA = mut.fromAA[-1]
                 all_mutations.add(mut)
         except IndexError:
