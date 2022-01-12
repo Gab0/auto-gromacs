@@ -606,9 +606,12 @@ class GromacsSimulation(object):
         arguments += [
             "-cpo", self.path_state_file(),
             "-ntmpi", "4",
-            "-ntomp", "6"
         ]
 
+        if not os.getenv("OMP_NUM_THREADS"):
+            arguments += [
+                "-ntomp", "6"
+            ]
         return arguments
 
     def md(self, arguments):
