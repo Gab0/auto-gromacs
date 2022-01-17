@@ -610,7 +610,7 @@ class GromacsSimulation(object):
 
         if not os.getenv("OMP_NUM_THREADS"):
             arguments += [
-                "-ntomp", "6"
+                "-ntomp", "8"
             ]
         return arguments
 
@@ -623,12 +623,14 @@ class GromacsSimulation(object):
         if arguments.gpu:
             command += [
                 "-nb", "gpu",
-                "-pme", "gpu",
                 "-pmefft", "gpu",
                 "-bonded", "gpu",
                 # "-update", "gpu",
             ]
-
+            if not arguments.hpc:
+                command += [
+                    "-pme", "gpu"
+                ]
         command = " ".join(command)
         log_file = self.path_log(step_no)
         if not arguments.dummy:
@@ -1009,6 +1011,12 @@ def parse_arguments():
         dest="RemoveDirectory",
         action="store_true",
         help="Force removal of existing working directory."
+    )
+
+    parser.add_argument(
+        "-hpc",
+        action="store_true",
+        help="This flag tunes the run to HPC environments, by disabling critical GROMACS flags."
     )
 
     mdp_control.add_option_override(parser, "MD", "dt")
