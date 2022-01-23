@@ -409,7 +409,7 @@ class GromacsSimulation(object):
         # TODO: What is this doing? word??? Better name!
         word = 'total'  # Your word
         charge = 0
-        with open(self.to_wd('step5.log')) as f:
+        with open(self.to_wd('step5.log'), encoding="utf8") as f:
             for line in f:
                 if word in line:
                     s_line = line.strip().split()
@@ -493,7 +493,7 @@ class GromacsSimulation(object):
         step_no = "8"
         step_name = " Minimisation"
 
-        command = self.base_mdrun("em")
+        command = self.base_mdrun(arguments, ALLOW_GPU=False, file_prefix="em")
 
         self.run_process(step_no, step_name, command)
 
@@ -524,7 +524,7 @@ class GromacsSimulation(object):
 
         step_no = "10"
         step_name = "NVT Equilibration"
-        command = self.base_mdrun("nvt")
+        command = self.base_mdrun(arguments, file_prefix="nvt")
         command += ["-deffnm", self.to_wd("nvt")]
 
         if not arguments.dummy:
@@ -557,7 +557,7 @@ class GromacsSimulation(object):
 
         step_no = "12"
         step_name = "NPT Equilibration"
-        command = self.base_mdrun("npt")
+        command = self.base_mdrun(arguments, file_prefix="npt")
 
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
@@ -586,7 +586,7 @@ class GromacsSimulation(object):
 
         self.run_process(step_no, step_name, command, self.path_log(step_no))
 
-    def base_mdrun(self, file_prefix="md"):
+    def base_mdrun(self, arguments, ALLOW_GPU=True, file_prefix="md"):
 
         mdrun_arguments_extensions = {
             "-s": ".tpr",
@@ -598,39 +598,33 @@ class GromacsSimulation(object):
             "-mtx": ".mtx"
         }
 
-        arguments = [self.mdrun, "-v"]
+        command = [self.mdrun, "-v"]
 
         for arg, ext in mdrun_arguments_extensions.items():
-            arguments += [arg, self.to_wd(file_prefix + ext)]
+            command += [arg, self.to_wd(file_prefix + ext)]
 
-        arguments += [
+        command += [
             "-cpo", self.path_state_file(),
             "-ntmpi", "4",
         ]
 
+        if ALLOW_GPU:
+            command += get_gpu_arguments(arguments.gpu, arguments.hpc)
+
         if not os.getenv("OMP_NUM_THREADS"):
-            arguments += [
+            command += [
                 "-ntomp", "8"
             ]
-        return arguments
+
+        return command
 
     def md(self, arguments):
         print(">STEP14: Simulation stared for %s" % self.protein_file_path)
         step_no = "14"
         step_name = "Creating producion MD."
 
-        command = self.base_mdrun()
-        if arguments.gpu:
-            command += [
-                "-nb", "gpu",
-                "-pmefft", "gpu",
-                "-bonded", "gpu",
-                # "-update", "gpu",
-            ]
-            if not arguments.hpc:
-                command += [
-                    "-pme", "gpu"
-                ]
+        command = self.base_mdrun(arguments)
+
         command = " ".join(command)
         log_file = self.path_log(step_no)
         if not arguments.dummy:
@@ -665,7 +659,7 @@ class GromacsSimulation(object):
             print(f"RESUME {critical_file} FILE NOT FOUND.")
             return None
 
-        command = self.base_mdrun() + [
+        command = self.base_mdrun(arguments) + [
             "-cpi", critical_file,
             "-append"
         ]
@@ -844,6 +838,30 @@ class GromacsSimulation(object):
         )
 
 
+def get_gpu_arguments(USE_GPU, IS_HPC):
+    """
+    Manage additional arguments for when GPUs are used,
+    while also considering usual HPC constraints
+    which were tested with NVIDIA Volta video cards.
+    """
+    if not USE_GPU:
+        return []
+
+    command = [
+            "-nb", "gpu",
+            "-bonded", "gpu",
+            # "-update", "gpu",
+    ]
+
+    if not IS_HPC:
+        command += [
+            "-pme", "gpu",
+            "-pmefft", "gpu",
+        ]
+
+    return command
+
+
 class SessionAction(enum.Enum):
     Nothing = 0
     New = 1
@@ -1014,9 +1032,10 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "-hpc",
+        "--hpc",
         action="store_true",
-        help="This flag tunes the run to HPC environments, by disabling critical GROMACS flags."
+        help="This flag tunes the run to HPC environments, " +
+        "by disabling critical GROMACS flags."
     )
 
     mdp_control.add_option_override(parser, "MD", "dt")
