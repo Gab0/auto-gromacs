@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name='autogromacs',
-    version='0.3',
+    version='0.4',
     packages=[
         'autogromacs.core',
         'autogromacs'
