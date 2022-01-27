@@ -605,7 +605,7 @@ class GromacsSimulation(object):
 
         command += [
             "-cpo", self.path_state_file(),
-            "-ntmpi", "4",
+            "-ntmpi", "0",
         ]
 
         if ALLOW_GPU:
@@ -613,7 +613,7 @@ class GromacsSimulation(object):
 
         if not os.getenv("OMP_NUM_THREADS"):
             command += [
-                "-ntomp", "8"
+                "-ntomp", str(os.cpu_count())
             ]
 
         return command
