@@ -605,7 +605,7 @@ class GromacsSimulation(object):
 
         command += [
             "-cpo", self.path_state_file(),
-            "-ntmpi", "0",
+            "-ntmpi", "1",
         ]
 
         if ALLOW_GPU:
