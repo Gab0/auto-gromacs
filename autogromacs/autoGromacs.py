@@ -610,7 +610,7 @@ class GromacsSimulation(object):
             command += get_gpu_arguments(arguments.gpu, arguments.hpc)
 
         ntomp = os.getenv("OMP_NUM_THREADS")
-        max_omp = 64
+        max_omp = 4
         ncores = os.cpu_count()
         if not ntomp:
             ntomp = min(max_omp, ncores)
