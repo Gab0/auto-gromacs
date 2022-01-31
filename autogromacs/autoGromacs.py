@@ -1,5 +1,5 @@
 #!/bin/python
-from typing import Tuple
+from typing import Tuple, List, Union, Optional
 import enum
 import shutil
 import argparse
@@ -10,7 +10,6 @@ import subprocess
 import datetime
 import pathlib
 
-from typing import List, Union, Optional
 from .core.messages import welcome_message
 from .core import settings
 
@@ -21,30 +20,49 @@ EM_MDP = "em.mdp"
 NVT_MDP = "nvt.mdp"
 
 
-def message(func, message):
+def message(func, msg):
     def wrapper():
-        print(message)
+        print(msg)
         func()
 
 
-def handle_error(ERROR, step_no, log_file=None):
-    if ERROR == 0:
-        print('STEP %s Completed!' % step_no)
+def handle_error(error_code, step_no, log_file=None):
+    """ Handles error codes. """
+    if error_code == 0:
+        print(f'STEP {step_no} Completed!')
         print("")
         return
     else:
         if log_file is not None:
-            READ_LOG = open(log_file).read()
-            print(READ_LOG)
+            with open(log_file, encoding="utf8") as f:
+                print(f.read())
 
-        if ERROR < 0:
-            print(f"HEADS UP: Killed by signal {-ERROR} :(")
-            sys.exit(ERROR)
+        if error_code < 0:
+            print(f"HEADS UP: Killed by signal {-error_code} :(")
+            sys.exit(error_code)
         else:
             print("\n")
             print("HEADS UP: Command failed for Step %s: return code %i."
-                  % (step_no, ERROR))
-            sys.exit(ERROR)
+                  % (step_no, error_code))
+            sys.exit(error_code)
+
+
+class GromacsExecutables():
+    gmx_commands = [
+        "pdb2gmx",
+        "mdrun",
+        "covar",
+        "grompp",
+        "genion",
+        "do_dssp",
+        "nmeig",
+        "anaeig",
+        "trjconv"
+    ]
+
+    def __init__(self):
+        for gmx_command in self.gmx_commands:
+            setattr(self, gmx_command, settings.g_prefix + gmx_command)
 
 
 class GromacsSimulation(object):
@@ -75,25 +93,10 @@ class GromacsSimulation(object):
             print('Can\'t use both the verbose and quiet flags together')
             sys.exit()
 
-        self.setup_gmx_executables()
+        self.gromacs = GromacsExecutables()
 
         # FIXME: Organize these variables:
         self.downsample_prefix = "mdf"
-
-    def setup_gmx_executables(self):
-        gmx_commands = [
-            "mdrun",
-            "covar",
-            "grompp",
-            "genion",
-            "do_dssp",
-            "nmeig",
-            "anaeig",
-            "trjconv"
-        ]
-
-        for gmx_command in gmx_commands:
-            setattr(self, gmx_command, settings.g_prefix + gmx_command)
 
     def to_wd(self, f, subdir: List[str] = []) -> str:
         basedir = os.path.join(self.working_dir, *subdir)
@@ -105,7 +108,7 @@ class GromacsSimulation(object):
         return self.to_wd("md.cpt")
 
     def fix_includes(self, fpath):
-        with open(fpath) as f:
+        with open(fpath, encoding="utf8") as f:
             contents = f.read()
 
         BASE = '#include "'
@@ -151,7 +154,7 @@ class GromacsSimulation(object):
             step_name: str,
             command: Union[List[str], str],
             log_file=None,
-            Input: Optional[str] = None):
+            stdin_input: Optional[str] = None):
 
         print("INFO: Attempting to execute " + step_name +
               " [STEP:" + step_no + "]")
@@ -171,8 +174,8 @@ class GromacsSimulation(object):
 
         ret = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
 
-        if Input is not None:
-            proc_input = Input.encode("utf-8")
+        if stdin_input is not None:
+            proc_input = stdin_input.encode("utf-8")
             ret.communicate(proc_input)
 
         ret.wait()
@@ -231,7 +234,7 @@ class GromacsSimulation(object):
 
         print("-> STEP 1: Initiating Procedure to generate topology for %s."
               % TARGET)
-        pdb2gmx = settings.g_prefix + "pdb2gmx"
+
         step_no = "1"
         step_name = "Topology Generation"
         log_file = self.path_log(step_no, TARGET)
@@ -239,7 +242,7 @@ class GromacsSimulation(object):
         POSRE_PATH = self.to_wd("posre.itp")
         TOPOL_PATH = self.to_wd("topol.top")
         command = [
-            pdb2gmx,
+            self.gromacs.pdb2gmx,
             "-f", self.to_wd(TARGET + ".pdb"),
             "-o", self.to_wd(TARGET + ".gro"),
             "-ignh",
@@ -258,7 +261,8 @@ class GromacsSimulation(object):
         self.fix_includes(TOPOL_PATH)
 
     def prepare_system(self):
-        exit()
+        """ Merges two molecules (PDB files). """
+        sys.exit()
         print("-> STEP 2: Initiating Precedure to merge two molecules.")
         start_from_line = 3  # or whatever line I need to jump to
 
@@ -383,7 +387,6 @@ class GromacsSimulation(object):
               "Complex")
 
         # TODO: Better name. Whats this?
-        grompp = settings.g_prefix + "grompp"
         step_no = "5"
         step_name = "Check Ions "
 
@@ -392,7 +395,7 @@ class GromacsSimulation(object):
         mdp_control.load_mdp(self, arguments, IONS_MDP)
 
         command = [
-            grompp,
+            self.gromacs.grompp,
             "-f", self.to_wd(IONS_MDP),
             "-c", self.to_wd("solv.gro"),
             "-p", self.to_wd("topol.top"),
@@ -475,12 +478,12 @@ class GromacsSimulation(object):
         print(">STEP7 : Preparing the files for Minimization")
         # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
         # mdrun -v -deffnm em
-        grompp = settings.g_prefix + "grompp"
         step_no = "7"
         step_name = "Prepare files for Minimisation"
         # max warn 3 only for now
         command = [
-            grompp + " -f " + self.to_wd(IONS_MDP),
+            self.gromacs.grompp,
+            "-f", self.to_wd(IONS_MDP),
             "-c", self.to_wd("solv_ions.gro"),
             "-p", self.to_wd("topol.top"),
             "-o", self.to_wd("em.tpr"),
@@ -598,28 +601,38 @@ class GromacsSimulation(object):
             "-mtx": ".mtx"
         }
 
-        command = [self.mdrun, "-v"]
+        command = [self.gromacs.mdrun, "-v"]
 
         for arg, ext in mdrun_arguments_extensions.items():
             command += [arg, self.to_wd(file_prefix + ext)]
 
-        command += [
-            "-cpo", self.path_state_file(),
-            "-ntmpi", "1",
-        ]
-
         if ALLOW_GPU:
             command += get_gpu_arguments(arguments.gpu, arguments.hpc)
 
-        if not os.getenv("OMP_NUM_THREADS"):
+        ntomp = os.getenv("OMP_NUM_THREADS")
+        max_omp = 64
+        ncores = os.cpu_count()
+        if not ntomp:
+            ntomp = min(max_omp, ncores)
+
             command += [
-                "-ntomp", str(os.cpu_count())
+                "-ntomp", str(ntomp)
             ]
+
+        ntmpi = max(1, round(ncores / max_omp))
+        command += [
+            "-cpo", self.path_state_file(),
+            "-ntmpi", str(ntmpi),
+        ]
+
+        print(f"ntomp: {ntomp}")
+        print(f"ntmpi: {ntmpi}")
 
         return command
 
     def md(self, arguments):
-        print(">STEP14: Simulation stared for %s" % self.protein_file_path)
+        """ Execute the main MD simulation. """
+        print(">STEP14: Simulation started for %s" % self.protein_file_path)
         step_no = "14"
         step_name = "Creating producion MD."
 
@@ -631,6 +644,7 @@ class GromacsSimulation(object):
             self.run_process(step_no, step_name, command, log_file)
 
     def continue_mdrun(self, arguments):
+        """ Resumes a MD simulation. """
         critical_file = self.path_state_file()
         simulation_log = self.path_log("14")
 
@@ -640,7 +654,7 @@ class GromacsSimulation(object):
         if arguments.refresh_mdp:
             mdp_control.load_mdp(self, arguments, "md.mdp")
             GP = [
-                self.grompp,
+                self.gromacs.grompp,
                 "-f", self.to_wd("md.mdp"),
                 "-c", self.to_wd("md.tpr"),
                 "-p", self.to_wd("topol.top"),
@@ -664,13 +678,13 @@ class GromacsSimulation(object):
             "-append"
         ]
 
-        with open(simulation_log) as f:
+        with open(simulation_log, encoding="utf8") as f:
             content = f.read()
-            CMD = re.findall(r"gmx [ \-\d\w/\.]+", content)
+            cli_command = re.findall(r"gmx [ \-\d\w/\.]+", content)
 
-        chosen = sorted(CMD, key=len, reverse=True)[0]
+        chosen = sorted(cli_command, key=len, reverse=True)[0]
 
-        CMD = chosen.split(" ") + command
+        cli_command = chosen.split(" ") + command
         command = " ".join(command)
 
         print(command)
@@ -685,14 +699,14 @@ class GromacsSimulation(object):
         step_no = "POST1"
 
         commandA = [
-            self.trjconv,
+            self.gromacs.trjconv,
             "-f", self.to_wd("md.trr"),
             "-o", self.to_wd("md5.trr"),
             "-skip", str(5)
         ]
 
         commandB = [
-            self.trjconv,
+            self.gromacs.trjconv,
             "-pbc", "mol",
             "-ur", "compact",
             "-f", self.to_wd("md5.trr"),
@@ -714,13 +728,13 @@ class GromacsSimulation(object):
             "Resolve Periodic Boundary Conditions",
             commandB,
             self.path_log(step_no),
-            Input="0"
+            stdin_input="0"
         )
 
     def analysis(self):
         step_no = "ANALYSIS"
         command = [
-            self.do_dssp,
+            self.gromacs.do_dssp,
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
             "-s", self.to_wd("md.gro"),
             "-o", self.to_wd("ss.xpm"),
@@ -733,7 +747,7 @@ class GromacsSimulation(object):
             "Analyze results",
             command,
             self.path_log(step_no),
-            Input="1"
+            stdin_input="1"
         )
         step_no = "qw"
 
@@ -754,7 +768,7 @@ class GromacsSimulation(object):
         svecs = [str(v) for v in vecs]
 
         commandEIG = [
-            self.anaeig,
+            self.gromacs.anaeig,
             "-s", self.to_wd("md.gro"),
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
             "-v", EGVEC,
@@ -770,7 +784,7 @@ class GromacsSimulation(object):
             "Covariance matrix",
             commandEIG,
             self.path_log(step_no),
-            Input="4\n4"
+            stdin_input="4\n4"
         )
 
     def pca(self):
@@ -781,7 +795,7 @@ class GromacsSimulation(object):
         EGVEC = self.to_wd("eigenvec.trr", SUBDIR)
 
         commandCOV = [
-            self.covar,
+            self.gromacs.covar,
             "-s", self.to_wd("md.gro"),
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
             "-av", self.to_wd("average.pdb", SUBDIR),
@@ -795,7 +809,7 @@ class GromacsSimulation(object):
             "Covariance matrix",
             commandCOV,
             self.path_log(step_no),
-            Input="4\n4"
+            stdin_input="4\n4"
         )
 
         self.do_anaeig(
@@ -808,12 +822,12 @@ class GromacsSimulation(object):
     def nma(self):
         step_no = "RERUN_HESSIAN"
 
-        Hessian = self.to_wd("hessian.mtx", subdirs=["COV"])
+        hessian = self.to_wd("hessian.mtx", subdir=["COV"])
         command = [
-            self.mdrun,
+            self.gromacs.mdrun,
             "-rerun", self.to_wd(self.downsample_prefix + ".trr"),
             "-s", self.to_wd("md.tpr"),
-            "-mtx", Hessian
+            "-mtx", hessian
         ]
 
         self.run_process(
@@ -825,8 +839,8 @@ class GromacsSimulation(object):
 
         step_no = "ANALYZE_HESSIAN"
         command = [
-            self.nmeig,
-            "-f", Hessian,
+            self.gromacs.nmeig,
+            "-f", hessian,
             "-s", self.to_wd("md.tpr")
         ]
 
@@ -863,6 +877,7 @@ def get_gpu_arguments(USE_GPU, IS_HPC):
 
 
 class SessionAction(enum.Enum):
+    """ Holds which pipeline part will be executed. """
     Nothing = 0
     New = 1
     Resume = 2
@@ -1126,8 +1141,8 @@ def run_pipeline(arguments):
     for STEP in STEPS:
         now = datetime.datetime.now().strftime("%H:%M:%S")
         print(f"\n\t[{now}]")
-        W = 'arguments' in STEP.__code__.co_varnames
-        if W:
+        take_arguments = 'arguments' in STEP.__code__.co_varnames
+        if take_arguments:
             STEP(arguments)
         else:
             STEP()
@@ -1137,6 +1152,7 @@ def run_pipeline(arguments):
 
 
 def main():
+    """ Execute pipeline. """
     arguments = parse_arguments()
 
     run_pipeline(arguments)
