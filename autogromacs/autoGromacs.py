@@ -69,7 +69,32 @@ def handle_error(error_code, step_no, log_file=None):
             sys.exit(error_code)
 
 
+def calculate_multithread_parameters(arguments):
+    """ Calculate multithreading parameters. """
+    ncores = os.cpu_count() / 2
+
+    if arguments.ntomp:
+        ntomp = arguments.ntomp
+    else:
+        ntomp = os.getenv("OMP_NUM_THREADS")
+        max_omp = 4
+
+    if not ntomp:
+        ntomp = min(max_omp, ncores)
+
+    if arguments.ntmpi:
+        ntmpi = arguments.ntmpi
+    else:
+        ntmpi = max(1, round(ncores / max_omp))
+
+    return [
+        "-ntmpi", str(ntmpi),
+        "-ntomp", str(ntomp)
+    ]
+
+
 class GromacsExecutables():
+    """ List GROMACS' 'executables'. """
     gmx_commands = [
         "pdb2gmx",
         "mdrun",
@@ -628,26 +653,11 @@ class GromacsSimulation(object):
             command += get_gpu_arguments(arguments.gpu,
                                          arguments.hpc,
                                          arguments.gpu_offload)
+        command += calculate_multithread_parameters(arguments)
 
-        ntomp = os.getenv("OMP_NUM_THREADS")
-        max_omp = 4
-        ncores = os.cpu_count() / 2
-
-        if not ntomp:
-            ntomp = min(max_omp, ncores)
-
-            command += [
-                "-ntomp", str(ntomp)
-            ]
-
-        ntmpi = max(1, round(ncores / max_omp))
         command += [
-            "-cpo", self.path_state_file(),
-            "-ntmpi", str(ntmpi),
+            "-cpo", self.path_state_file()
         ]
-
-        print(f"ntomp: {ntomp}")
-        print(f"ntmpi: {ntmpi}")
 
         return command
 
