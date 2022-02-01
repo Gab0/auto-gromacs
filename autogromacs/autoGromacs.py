@@ -1,5 +1,6 @@
 #!/bin/python
 from typing import Tuple, List, Union, Optional
+
 import enum
 import shutil
 import argparse
@@ -9,6 +10,7 @@ import re
 import subprocess
 import datetime
 import pathlib
+import itertools
 
 from .core.messages import welcome_message
 from .core import settings
@@ -24,6 +26,26 @@ def message(func, msg):
     def wrapper():
         print(msg)
         func()
+
+
+def pipeline_step(func, step_no, step_name):
+    """ Decorator to help organize the pipeline steps. """
+    def inner(*args):
+        func(step_no, step_name, *args)
+
+    return inner
+
+
+def welcome():
+    """
+    Prints out a welcome message, license info and the version.
+    """
+    print(welcome_message)
+
+
+def build_step_title(step_no: int, description: str):
+    """ Build a message to identify a single pipeline step. """
+    return f"> STEP {step_no}: {description}"
 
 
 def handle_error(error_code, step_no, log_file=None):
@@ -124,7 +146,7 @@ class GromacsSimulation(object):
 
             print("Ok.")
 
-            with open(fpath, 'w') as f:
+            with open(fpath, 'w', encoding="utf8") as f:
                 f.write(output)
         else:
             print("Query not found!")
@@ -135,12 +157,6 @@ class GromacsSimulation(object):
             m = "_" + extra
         return self.to_wd(f"step{n}{m}.log")
 
-    @staticmethod
-    def welcome():
-        """
-        Prints out a welcome message, license info and the version.
-        """
-        print(welcome_message)
 
     def check_file(self, filename):
         pass
@@ -319,8 +335,8 @@ class GromacsSimulation(object):
         system_file.write(last_line)
         print("CHEERS: system.gro WAS GENERATED SUCCESSFULLY")
 
-        f1 = open(self.to_wd('topol.top', 'r'))
-        f2 = open(self.to_wd('topol_temp.top', 'w'))
+        f1 = open(self.to_wd('topol.top', 'r'), encoding="utf8")
+        f2 = open(self.to_wd('topol_temp.top', 'w'), encoding="utf8")
 
         f1.close()
         f2.close()
@@ -496,7 +512,7 @@ class GromacsSimulation(object):
         step_no = "8"
         step_name = " Minimisation"
 
-        command = self.base_mdrun(arguments, ALLOW_GPU=False, file_prefix="em")
+        command = self.base_mdrun(arguments, allow_gpu=False, file_prefix="em")
 
         self.run_process(step_no, step_name, command)
 
@@ -566,6 +582,7 @@ class GromacsSimulation(object):
             self.run_process(step_no, step_name, command)
 
     def initmd(self, arguments):
+        """ Prepare the production run. """
         print(">STEP13 : Initiating the Production Run")
         grompp = settings.g_prefix + "grompp"
         step_no = "13"
@@ -589,7 +606,8 @@ class GromacsSimulation(object):
 
         self.run_process(step_no, step_name, command, self.path_log(step_no))
 
-    def base_mdrun(self, arguments, ALLOW_GPU=True, file_prefix="md"):
+    def base_mdrun(self, arguments, allow_gpu=True, file_prefix="md"):
+        """ Generate the base arguments for a MD session. """
 
         mdrun_arguments_extensions = {
             "-s": ".tpr",
@@ -606,12 +624,15 @@ class GromacsSimulation(object):
         for arg, ext in mdrun_arguments_extensions.items():
             command += [arg, self.to_wd(file_prefix + ext)]
 
-        if ALLOW_GPU:
-            command += get_gpu_arguments(arguments.gpu, arguments.hpc)
+        if allow_gpu:
+            command += get_gpu_arguments(arguments.gpu,
+                                         arguments.hpc,
+                                         arguments.gpu_offload)
 
         ntomp = os.getenv("OMP_NUM_THREADS")
         max_omp = 4
-        ncores = os.cpu_count()
+        ncores = os.cpu_count() / 2
+
         if not ntomp:
             ntomp = min(max_omp, ncores)
 
@@ -630,11 +651,11 @@ class GromacsSimulation(object):
 
         return command
 
-    def md(self, arguments):
+    def main_md(self, arguments):
         """ Execute the main MD simulation. """
-        print(">STEP14: Simulation started for %s" % self.protein_file_path)
         step_no = "14"
-        step_name = "Creating producion MD."
+        step_name = f"Running producion MD for {self.protein_file_path}."
+        print(build_step_title(step_no, step_name))
 
         command = self.base_mdrun(arguments)
 
@@ -653,7 +674,7 @@ class GromacsSimulation(object):
 
         if arguments.refresh_mdp:
             mdp_control.load_mdp(self, arguments, "md.mdp")
-            GP = [
+            command = [
                 self.gromacs.grompp,
                 "-f", self.to_wd("md.mdp"),
                 "-c", self.to_wd("md.tpr"),
@@ -665,13 +686,13 @@ class GromacsSimulation(object):
             self.run_process(
                 step_no,
                 "Update simulation",
-                " ".join(GP),
+                " ".join(command),
                 self.path_log(step_no)
             )
 
         if not os.path.isfile(critical_file):
             print(f"RESUME {critical_file} FILE NOT FOUND.")
-            return None
+            return
 
         command = self.base_mdrun(arguments) + [
             "-cpi", critical_file,
@@ -852,25 +873,33 @@ class GromacsSimulation(object):
         )
 
 
-def get_gpu_arguments(USE_GPU, IS_HPC):
+def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = ""):
     """
     Manage additional arguments for when GPUs are used,
     while also considering usual HPC constraints
     which were tested with NVIDIA Volta video cards.
     """
-    if not USE_GPU:
+
+    if custom_offload:
+        flags = [
+            [f"-{flag.strip()}", "gpu"]
+            for flag in custom_offload.split(",")
+        ]
+        return list(itertools.chain.from_iterable(flags))
+
+    if not use_gpu:
         return []
 
     command = [
             "-nb", "gpu",
-            "-bonded", "gpu",
             # "-update", "gpu",
     ]
 
-    if not IS_HPC:
+    if not is_hpc:
         command += [
             "-pme", "gpu",
             "-pmefft", "gpu",
+            "-bonded", "gpu",
         ]
 
     return command
@@ -887,6 +916,10 @@ class SessionAction(enum.Enum):
 
 
 def session_action_decision(arguments) -> SessionAction:
+    """
+    Interprete the CLI arguments to decide
+    which components of the pipeline will be executed.
+    """
 
     if not os.path.isdir(arguments.working_dir):
         if arguments.dummy:
@@ -894,7 +927,7 @@ def session_action_decision(arguments) -> SessionAction:
 
         return SessionAction.New
 
-    TRR_Present = False
+    trr_present = False
     for F in os.listdir(arguments.working_dir):
         if F.endswith("md.gro"):
             if arguments.postprocess_only:
@@ -903,28 +936,32 @@ def session_action_decision(arguments) -> SessionAction:
                 return SessionAction.AnalysisOnly
             return SessionAction.Nothing
 
-        elif F.endswith("md.trr"):
-            TRR_Present = True
+        if F.endswith("md.trr"):
+            trr_present = True
 
-    if TRR_Present:
+    if trr_present:
         return SessionAction.Resume
 
     return SessionAction.Nothing
 
 
 def backup_existing_directory(working_dir):
-    W = os.path.split(working_dir)
+    """
+    Copies the entire contents of
+    the current working directory if it exists.
+    """
+    wdir = os.path.split(working_dir)
 
-    if not W[1]:
-        From = W[0]
+    if not wdir[1]:
+        from_path = wdir[0]
     else:
-        From = working_dir
+        from_path = working_dir
 
-    if os.path.isdir(From):
-        To = os.path.join(os.path.basename(From), "BACKUP")
-        if os.path.isdir(To):
-            shutil.rmtree(To)
-        shutil.move(From, To)
+    if os.path.isdir(from_path):
+        to_path = os.path.join(os.path.basename(from_path), "BACKUP")
+        if os.path.isdir(to_path):
+            shutil.rmtree(to_path)
+        shutil.move(from_path, to_path)
 
 
 def parse_arguments():
@@ -1053,6 +1090,28 @@ def parse_arguments():
         "by disabling critical GROMACS flags."
     )
 
+    parser.add_argument(
+        "--gpu-offload",
+        type=str,
+        default="",
+        help="Custom calculation methods to offset to gpu, as a comma separated list." +
+        "Will override all other GPU-related options. Example: 'pme,update'"
+    )
+
+    parser.add_argument(
+        "--ntomp",
+        type=int,
+        default=0,
+        help="Force a specific ntomp value for the MD runs."
+    )
+
+    parser.add_argument(
+        "--ntmpi",
+        type=int,
+        default=0,
+        help="Force a specific ntmpi value for the MD runs."
+    )
+
     mdp_control.add_option_override(parser, "MD", "dt")
     mdp_control.add_option_override(parser, "MD", "nsteps")
     mdp_control.add_option_override(parser, "NVT", "nsteps")
@@ -1063,6 +1122,7 @@ def parse_arguments():
 
 
 def run_pipeline(arguments):
+    """ Execute the pipeline. """
 
     if arguments.RemoveDirectory:
         backup_existing_directory(arguments.working_dir)
@@ -1071,7 +1131,7 @@ def run_pipeline(arguments):
 
     Action = session_action_decision(arguments)
 
-    obj.welcome()
+    welcome()
 
     # DECLARE STEPS
     STEPS_GATHER = [
@@ -1090,8 +1150,7 @@ def run_pipeline(arguments):
         obj.nvt,
         obj.npt,
         obj.initmd,
-        obj.md,
-        obj.postprocess,
+        obj.main_md,
     ]
 
     STEPS_RESUME = [
@@ -1107,45 +1166,45 @@ def run_pipeline(arguments):
         obj.pca
     ]
 
-    RequirePDB = False
+    require_pdb = False
     if Action == SessionAction.Resume:
-        STEPS = STEPS_RESUME + STEPS_POSTPROCESS
+        steps = STEPS_RESUME + STEPS_POSTPROCESS
 
     elif Action == SessionAction.Nothing:
         print(f"""Nothing to do for working directory {arguments.working_dir}:
         .gro found.""")
-        STEPS = []
+        steps = []
 
     elif Action == SessionAction.PostProcessOnly:
-        STEPS = STEPS_POSTPROCESS
+        steps = STEPS_POSTPROCESS
 
     elif Action == SessionAction.AnalysisOnly:
-        STEPS = STEPS_ANALYSIS
+        steps = STEPS_ANALYSIS
 
     elif Action == SessionAction.Dummy:
-        RequirePDB = True
-        STEPS = STEPS_GATHER + STEPS_PREPARE
+        require_pdb = True
+        steps = STEPS_GATHER + STEPS_PREPARE
 
     elif Action == SessionAction.New:
-        RequirePDB = True
-        STEPS = STEPS_GATHER + \
+        require_pdb = True
+        steps = STEPS_GATHER + \
             STEPS_PREPARE + \
             STEPS_EXECUTE + \
             STEPS_POSTPROCESS
 
-    if RequirePDB:
+    if require_pdb:
         if not obj.protein_file_path:
             print("No input protein specified.")
             sys.exit(1)
 
-    for STEP in STEPS:
+    for step in steps:
         now = datetime.datetime.now().strftime("%H:%M:%S")
         print(f"\n\t[{now}]")
-        take_arguments = 'arguments' in STEP.__code__.co_varnames
+        take_arguments = 'arguments' in step.__code__.co_varnames
         if take_arguments:
-            STEP(arguments)
+            step(arguments)
         else:
-            STEP()
+            step()
 
     # -- Create MDP settings summary.
     mdp_control.build_settings_summary(obj, arguments)
