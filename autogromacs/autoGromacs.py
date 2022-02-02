@@ -45,7 +45,8 @@ def welcome():
 
 def build_step_title(step_no: int, description: str):
     """ Build a message to identify a single pipeline step. """
-    return f"> STEP {step_no}: {description}"
+    now = datetime.datetime.now().strftime("%H:%M:%S")
+    return f"\t[{now}]> STEP {step_no}: {description}"
 
 
 def handle_error(error_code, step_no, log_file=None):
@@ -726,17 +727,31 @@ class GromacsSimulation(object):
             log_file
         )
 
-    def postprocess(self):
+    def skip_frames(self):
+        """
+        Extract a shorter trajectory from the original
+        by skipping frames.
+        """
         step_no = "POST1"
 
-        commandA = [
+        command = [
             self.gromacs.trjconv,
             "-f", self.to_wd("md.trr"),
             "-o", self.to_wd("md5.trr"),
             "-skip", str(5)
         ]
 
-        commandB = [
+        step_no = "POST_SKIP"
+        self.run_process(
+            step_no,
+            "Skip frames",
+            command,
+            self.path_log(step_no)
+        )
+
+    def solve_periodic_boundaries(self):
+        """ Remove the periodic boundary conditions. """
+        command = [
             self.gromacs.trjconv,
             "-pbc", "mol",
             "-ur", "compact",
@@ -745,24 +760,17 @@ class GromacsSimulation(object):
             "-o", self.to_wd(self.downsample_prefix + ".trr")
         ]
 
-        step_no = "POST_SKIP"
-        self.run_process(
-            step_no,
-            "Skip frames",
-            commandA,
-            self.path_log(step_no)
-        )
-
         step_no = "POST_PBC"
         self.run_process(
             step_no,
             "Resolve Periodic Boundary Conditions",
-            commandB,
+            command,
             self.path_log(step_no),
             stdin_input="0"
         )
 
     def analysis(self):
+        """ Executes DSSP analysis. """
         step_no = "ANALYSIS"
         command = [
             self.gromacs.do_dssp,
@@ -796,9 +804,10 @@ class GromacsSimulation(object):
         )
 
     def do_anaeig(self, step_no, EGVEC, EGVAL, vecs: Tuple[int, int], output_file):
+        """ Execute eigenvector analysis using 'gmx anaeig'. """
         svecs = [str(v) for v in vecs]
 
-        commandEIG = [
+        command = [
             self.gromacs.anaeig,
             "-s", self.to_wd("md.gro"),
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
@@ -813,7 +822,7 @@ class GromacsSimulation(object):
         self.run_process(
             step_no,
             "Covariance matrix",
-            commandEIG,
+            command,
             self.path_log(step_no),
             stdin_input="4\n4"
         )
@@ -825,7 +834,7 @@ class GromacsSimulation(object):
         EGVAL = self.to_wd("eigenval.xvg", SUBDIR)
         EGVEC = self.to_wd("eigenvec.trr", SUBDIR)
 
-        commandCOV = [
+        command = [
             self.gromacs.covar,
             "-s", self.to_wd("md.gro"),
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
@@ -838,7 +847,7 @@ class GromacsSimulation(object):
         self.run_process(
             step_no,
             "Covariance matrix",
-            commandCOV,
+            command,
             self.path_log(step_no),
             stdin_input="4\n4"
         )
@@ -917,12 +926,12 @@ def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = ""):
 
 class SessionAction(enum.Enum):
     """ Holds which pipeline part will be executed. """
-    Nothing = 0
-    New = 1
-    Resume = 2
-    PostProcessOnly = 3
-    Dummy = 4
-    AnalysisOnly = 5
+    NOTHING = 0
+    NEW = 1
+    RESUME = 2
+    POST_PROCESS_ONLY = 3
+    DUMMY = 4
+    ANALYSIS_ONLY = 5
 
 
 def session_action_decision(arguments) -> SessionAction:
@@ -933,26 +942,26 @@ def session_action_decision(arguments) -> SessionAction:
 
     if not os.path.isdir(arguments.working_dir):
         if arguments.dummy:
-            return SessionAction.Dummy
+            return SessionAction.DUMMY
 
-        return SessionAction.New
+        return SessionAction.NEW
 
     trr_present = False
-    for F in os.listdir(arguments.working_dir):
-        if F.endswith("md.gro"):
+    for content_file in os.listdir(arguments.working_dir):
+        if content_file.endswith("md.gro"):
             if arguments.postprocess_only:
-                return SessionAction.PostProcessOnly
+                return SessionAction.POST_PROCESS_ONLY
             if arguments.analysis_only:
-                return SessionAction.AnalysisOnly
-            return SessionAction.Nothing
+                return SessionAction.ANALYSIS_ONLY
+            return SessionAction.NOTHING
 
-        if F.endswith("md.trr"):
+        if content_file.endswith("md.trr"):
             trr_present = True
 
     if trr_present:
-        return SessionAction.Resume
+        return SessionAction.RESUME
 
-    return SessionAction.Nothing
+    return SessionAction.NOTHING
 
 
 def backup_existing_directory(working_dir):
@@ -975,6 +984,7 @@ def backup_existing_directory(working_dir):
 
 
 def parse_arguments():
+    """ Parse CLI arguments. """
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -1168,7 +1178,8 @@ def run_pipeline(arguments):
     ]
 
     STEPS_POSTPROCESS = [
-        obj.postprocess
+        obj.skip_frames,
+        obj.solve_periodic_boundaries
     ]
 
     STEPS_ANALYSIS = [
@@ -1177,25 +1188,25 @@ def run_pipeline(arguments):
     ]
 
     require_pdb = False
-    if Action == SessionAction.Resume:
+    if Action == SessionAction.RESUME:
         steps = STEPS_RESUME + STEPS_POSTPROCESS
 
-    elif Action == SessionAction.Nothing:
+    elif Action == SessionAction.NOTHING:
         print(f"""Nothing to do for working directory {arguments.working_dir}:
         .gro found.""")
         steps = []
 
-    elif Action == SessionAction.PostProcessOnly:
+    elif Action == SessionAction.POST_PROCESS_ONLY:
         steps = STEPS_POSTPROCESS
 
-    elif Action == SessionAction.AnalysisOnly:
+    elif Action == SessionAction.ANALYSIS_ONLY:
         steps = STEPS_ANALYSIS
 
-    elif Action == SessionAction.Dummy:
+    elif Action == SessionAction.DUMMY:
         require_pdb = True
         steps = STEPS_GATHER + STEPS_PREPARE
 
-    elif Action == SessionAction.New:
+    elif Action == SessionAction.NEW:
         require_pdb = True
         steps = STEPS_GATHER + \
             STEPS_PREPARE + \
@@ -1208,8 +1219,6 @@ def run_pipeline(arguments):
             sys.exit(1)
 
     for step in steps:
-        now = datetime.datetime.now().strftime("%H:%M:%S")
-        print(f"\n\t[{now}]")
         take_arguments = 'arguments' in step.__code__.co_varnames
         if take_arguments:
             step(arguments)
