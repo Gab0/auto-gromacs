@@ -654,7 +654,10 @@ class GromacsSimulation(object):
             command += get_gpu_arguments(arguments.gpu,
                                          arguments.hpc,
                                          arguments.gpu_offload)
+
         command += calculate_multithread_parameters(arguments)
+
+        command = fix_pme_ranks(command)
 
         command += [
             "-cpo", self.path_state_file()
@@ -892,6 +895,27 @@ class GromacsSimulation(object):
         )
 
 
+def fix_pme_ranks(command):
+    """
+    Ensure PME will be executed as a single rank.
+    Both checks performed here are important, because
+    GROMACS can be VERY pedantic about the mdrun arguments.
+    """
+    def check_pattern(pattern):
+        com = ",".join(command)
+        return re.findall(pattern, com)
+
+    pme_check = check_pattern(r"-pme,gpu")
+
+    ntmpi_pat = check_pattern(r"-ntmpi,\d+")
+    ntmpi_check = ntmpi_pat and ntmpi_pat[0] not in ["-ntmpi,0", "-ntmpi,1"]
+
+    if pme_check and ntmpi_check:
+        command += ["-npme", "1"]
+
+    return command
+
+
 def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = ""):
     """
     Manage additional arguments for when GPUs are used,
@@ -900,11 +924,11 @@ def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = ""):
     """
 
     if custom_offload:
-        flags = [
+        command = [
             [f"-{flag.strip()}", "gpu"]
             for flag in custom_offload.split(",")
         ]
-        return list(itertools.chain.from_iterable(flags))
+        return list(itertools.chain.from_iterable(command))
 
     if not use_gpu:
         return []
