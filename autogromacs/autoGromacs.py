@@ -926,7 +926,7 @@ def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = ""):
     if custom_offload:
         command = [
             [f"-{flag.strip()}", "gpu"]
-            for flag in custom_offload.split(",")
+            for flag in filter(None, custom_offload.split(","))
         ]
         return list(itertools.chain.from_iterable(command))
 
@@ -1158,8 +1158,12 @@ def parse_arguments():
 
     mdp_control.add_option_override(parser, "MD", "dt")
     mdp_control.add_option_override(parser, "MD", "nsteps")
+    mdp_control.add_option_override(parser, "MD", "nstlist")
+
     mdp_control.add_option_override(parser, "NVT", "nsteps")
+
     mdp_control.add_option_override(parser, "NPT", "nsteps")
+
     mdp_control.add_option_override(parser, "IONS", "nsteps")
 
     return parser.parse_args()
