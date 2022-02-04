@@ -21,7 +21,7 @@ lincs_order	            = 4		    ; also related to accuracy
 ; Neighborsearching
 cutoff-scheme = Verlet
 ns_type		    = grid		; search neighboring grid cells
-nstlist		    = 10	    ; 20 fs, largely irrelevant with Verlet scheme
+nstlist		    = 30   	    ; 20 fs, largely irrelevant with Verlet scheme
 rcoulomb	    = 1.0		  ; short-range electrostatic cutoff (in nm)
 rvdw		    = 1.0	    	; short-range van der Waals cutoff (in nm)
 
