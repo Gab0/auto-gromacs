@@ -13,6 +13,9 @@ setup(
     ],
     platforms='any',
     license="MIT",
+    install_requires=[
+        "MDAnalysis"
+        ],
     entry_points={
         'console_scripts': [
             "autogromacs=autogromacs.autoGromacs:main",
