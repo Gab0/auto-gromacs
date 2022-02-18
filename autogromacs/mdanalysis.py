@@ -4,22 +4,20 @@ import argparse
 import sys
 import os
 import re
-import numpy as np
 import warnings
+
+import numpy as np
 
 import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca
 
-import numpy.linalg
-
 from . import mdplots
-
-from umap import umap_ as umap
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 def parse_arguments():
+    """Parse commandline arguments."""
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-f", dest='FilePrefix', nargs="*")
