@@ -177,18 +177,12 @@ class GromacsSimulation(object):
         else:
             print("Query not found!")
 
-    def path_log(self, n, extra: str = ""):
-        m = ""
+    def path_log(self, code, extra: str = ""):
+        """Builds the filename for log files."""
+        msg = ""
         if extra:
-            m = "_" + extra
-        return self.to_wd(f"step{n}{m}.log")
-
-
-    def check_file(self, filename):
-        pass
-
-    def exit_program(self):
-        pass
+            msg = "_" + extra
+        return self.to_wd(f"step_{code}{msg}.log")
 
     def run_process(
             self,
@@ -197,6 +191,7 @@ class GromacsSimulation(object):
             command: Union[List[str], str],
             log_file=None,
             stdin_input: Optional[str] = None):
+        """Execute an external process."""
 
         print("INFO: Attempting to execute " + step_name +
               " [STEP:" + step_no + "]")
@@ -214,15 +209,16 @@ class GromacsSimulation(object):
         if self.dummy:
             return
 
-        ret = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
+        with subprocess.Popen(command,
+                              stdin=subprocess.PIPE, shell=True) as ret:
 
-        if stdin_input is not None:
-            proc_input = stdin_input.encode("utf-8")
-            ret.communicate(proc_input)
+            if stdin_input is not None:
+                proc_input = stdin_input.encode("utf-8")
+                ret.communicate(proc_input)
 
-        ret.wait()
+            ret.wait()
 
-        handle_error(ret.returncode, step_no, log_file)
+            handle_error(ret.returncode, step_no, log_file)
 
     def gather_files(self):
         if self.ligand_file_path and not os.path.isfile(
@@ -735,7 +731,7 @@ class GromacsSimulation(object):
         Extract a shorter trajectory from the original
         by skipping frames.
         """
-        step_no = "POST1"
+        step_no = "SKIP"
 
         command = [
             self.gromacs.trjconv,
@@ -744,7 +740,6 @@ class GromacsSimulation(object):
             "-skip", str(5)
         ]
 
-        step_no = "POST_SKIP"
         self.run_process(
             step_no,
             "Skip frames",
@@ -763,7 +758,7 @@ class GromacsSimulation(object):
             "-o", self.to_wd(self.downsample_prefix + ".trr")
         ]
 
-        step_no = "POST_PBC"
+        step_no = "REMOVE_PBC"
         self.run_process(
             step_no,
             "Resolve Periodic Boundary Conditions",
@@ -831,6 +826,7 @@ class GromacsSimulation(object):
         )
 
     def pca(self):
+        """Run Principal Component Analysis unsing GROMACS' utilities."""
         step_no = "covar"
         SUBDIR = ["PCA"]
 
