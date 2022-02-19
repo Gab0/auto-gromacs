@@ -172,17 +172,17 @@ def ask_simulation_prefixes(SimulationPrefixes):
 
 
 def select_simulation_prefixes(SimulationPrefixes, input_string):
-    q = [
+    range_descriptors = [
         v.strip()
         for v in input_string.split(",")
     ]
 
     OutputPrefixes = []
 
-    if not q:
+    if not range_descriptors:
         return SimulationPrefixes
 
-    for v in q:
+    for v in range_descriptors:
         try:
             if "-" in v:
                 limits = v.split("-")
@@ -204,8 +204,8 @@ def select_simulation_prefixes(SimulationPrefixes, input_string):
     return OutputPrefixes
 
 
-def concat_filepath(base: str, specifiers: List[str]) -> str:
-    return base + "_" + "_".join(specifiers) + ".png"
+def concat_filepath(specifiers: List[str]) -> str:
+    return "_".join(specifiers) + ".png"
 
 
 def build_filepath(
@@ -225,7 +225,7 @@ def build_filepath(
         if ID:
             specifiers.append(ID)
 
-        return concat_filepath(ID, specifiers)
+        return concat_filepath(specifiers)
 
     return None
 
