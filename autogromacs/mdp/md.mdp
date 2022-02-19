@@ -3,11 +3,11 @@ integrator          = md      	; leap-frog integrator
 nsteps              = 100000	; nsteps * dt (in ns) = T
 dt                  = 0.002	    ; 2 fs
 ; Output control
-nstxout		          = 5000    ; save coordinates every 10.0 ps
-nstvout		          = 5000    ; save velocities every 10.0 ps
-nstenergy	          = 5000  	; save energies every 10.0 ps
-nstlog		          = 5000000	; update log file every 10.0 ps
-nstxout-compressed  = 5000      ; save compressed coordinates every 10.0 ps
+nstxout		          = 50000    ; save coordinates every 10.0 ps
+nstvout		          = 50000    ; save velocities every 10.0 ps
+nstenergy	          = 50000    ; save energies every 10.0 ps
+nstlog		          = 5000000  ; update log file every 10.0 ps
+nstxout-compressed  = 500000    ; save compressed coordinates every 10.0 ps
                                 ; nstxout-compressed replaces nstxtcout
 compressed-x-grps   = System    ; replaces xtc-grps
 
