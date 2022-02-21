@@ -104,12 +104,16 @@ def get_label(u: mda.Universe) -> str:
 
 
 def process_simulation_name(name: str) -> str:
-    NB = re.findall(r"\d+-{0,1}\d*", name)[0]
-    if NB == "0":
-        return "Original"
+    NB = re.findall(r"\d+-{0,1}\d*", name)
 
-    return f"Variação #{NB}"
+    if NB:
+        number = NB[0]
+        if number == "0":
+            return "Original"
 
+        return f"Variação #{number}"
+
+    return name
 
 def RMSDStudy(us, unames):
     POS = []
@@ -145,23 +149,23 @@ def pairwise_rmsds(POS):
 
 def loadSimulationPrefixes(arguments):
 
-    SimulationPrefixes = []
+    simulation_prefixes = []
     for AutoDetectDir in arguments.AutoDetect:
-        SimulationPrefixes += autodetect_files(AutoDetectDir)
+        simulation_prefixes += autodetect_files(AutoDetectDir)
 
     if arguments.FilePrefix is not None:
-        SimulationPrefixes += arguments.FilePrefix
+        simulation_prefixes += arguments.FilePrefix
 
-    if not SimulationPrefixes:
+    if not simulation_prefixes:
         print("FATAL: No prefixes found.")
         sys.exit(1)
 
-    return SimulationPrefixes
+    return simulation_prefixes
 
 
-def ask_simulation_prefixes(SimulationPrefixes):
+def ask_simulation_prefixes(simulation_prefixes):
     print("File prefixes found:")
-    for i, prefix in enumerate(SimulationPrefixes):
+    for i, prefix in enumerate(simulation_prefixes):
         print(f"{i + 1}:\t" + prefix)
 
     print("Select all prefixes? (empty input)")
@@ -171,7 +175,7 @@ def ask_simulation_prefixes(SimulationPrefixes):
     return input(">")
 
 
-def select_simulation_prefixes(SimulationPrefixes, input_string):
+def select_simulation_prefixes(simulation_prefixes, input_string):
     range_descriptors = [
         v.strip()
         for v in input_string.split(",")
@@ -180,7 +184,7 @@ def select_simulation_prefixes(SimulationPrefixes, input_string):
     OutputPrefixes = []
 
     if not range_descriptors:
-        return SimulationPrefixes
+        return simulation_prefixes
 
     for v in range_descriptors:
         try:
@@ -196,7 +200,7 @@ def select_simulation_prefixes(SimulationPrefixes, input_string):
             raise Exception("Invalid input.")
 
         for prefix_idx in V:
-            OutputPrefixes.append(SimulationPrefixes[prefix_idx - 1])
+            OutputPrefixes.append(simulation_prefixes[prefix_idx - 1])
 
     for prefix in OutputPrefixes:
         print('\t' + prefix)
@@ -254,19 +258,19 @@ def show_universe_information(U: mda.Universe):
 
 def analyzeMD(arguments):
 
-    SimulationPrefixes = loadSimulationPrefixes(arguments)
+    simulation_prefixes = loadSimulationPrefixes(arguments)
 
     if arguments.SimulationSelection:
         user_input = arguments.SimulationSelection
     else:
-        user_input = ask_simulation_prefixes(SimulationPrefixes)
+        user_input = ask_simulation_prefixes(simulation_prefixes)
 
-    SimulationPrefixes = select_simulation_prefixes(
-        SimulationPrefixes,
+    simulation_prefixes = select_simulation_prefixes(
+        simulation_prefixes,
         user_input
     )
 
-    # us = map(lambda sp: load_universe(sp, arguments), SimulationPrefixes)
+    # us = map(lambda sp: load_universe(sp, arguments), simulation_prefixes)
     # can access via segid (4AKE) and atom name
     # we take the first atom named N and the last atom named C
     # nterm = u.select_atoms('segid 4AKE and name N')[0]
@@ -284,8 +288,8 @@ def analyzeMD(arguments):
         pca_series = []
         total_times = []
 
-        for i, SP in enumerate(SimulationPrefixes):
-            print(f"Processsing {i + 1} of {len(SimulationPrefixes)}: {SP}")
+        for i, SP in enumerate(simulation_prefixes):
+            print(f"Processsing {i + 1} of {len(simulation_prefixes)}: {SP}")
             u = load_universe(SP, arguments.TrajSuffix)
 
             show_universe_information(u)
