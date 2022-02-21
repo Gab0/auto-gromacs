@@ -188,7 +188,7 @@ def show_rms_series_stacked(
                 INITIALIZED = True
 
         elif Values.ndim == 2:
-            axk[i].plot(X, Y, "b-", color="black")
+            axk[i].plot(X, Y, "-", color="black")
             enforce_ax_ticks(axk[i], Y_MAX, 5)
         else:
             print(f"{Values.ndim}")
