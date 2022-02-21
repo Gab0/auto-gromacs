@@ -450,7 +450,7 @@ class GromacsSimulation(object):
         # TODO: What is this doing? word??? Better name!
         word = 'total'  # Your word
         charge = 0
-        with open(self.to_wd('step5.log'), encoding="utf8") as f:
+        with open(self.path_log(step_no), encoding="utf8") as f:
             for line in f:
                 if word in line:
                     s_line = line.strip().split()
