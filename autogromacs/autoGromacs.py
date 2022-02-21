@@ -476,8 +476,8 @@ class GromacsSimulation(object):
                 "-s", self.to_wd("ions.tpr"),
                 "-o", self.to_wd("solv_ions.gro"),
                 "-p", self.to_wd("topol.top"),
-                "-nname CL -nn " + str(charge) + " >>",
-                self.to_wd("step6.log"),
+                f"-nname {arguments.nname} -nn " + str(charge) + " >>",
+                self.path_log(step_no),
                 "2>&1", "<< EOF\nSOL\nEOF"
             ]
 
@@ -494,7 +494,7 @@ class GromacsSimulation(object):
                 "-s", self.to_wd("ions.tpr"),
                 "-o", self.to_wd("solv_ions.gro"),
                 "-p", self.to_wd("topol.top"),
-                "-pname", "NA",
+                "-pname", arguments.pname,
                 "-np", str(-charge),
                 "<< EOF\nSOL\nEOF"
             ]
@@ -1150,6 +1150,18 @@ def parse_arguments():
         type=int,
         default=0,
         help="Force a specific ntmpi value for the MD runs."
+    )
+
+    parser.add_argument(
+        "--nname",
+        default="CLA",
+        help="The identifier of the negative ion."
+    )
+
+    parser.add_argument(
+        "--pname",
+        default="NA",
+        help="The identifier of the positive ion."
     )
 
     mdp_control.add_option_override(parser, "MD", "dt")
