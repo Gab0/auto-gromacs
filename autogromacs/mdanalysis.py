@@ -1,5 +1,6 @@
-from typing import List, Optional, cast
+from typing import List, Optional, cast, Tuple
 import enum
+import copy
 import argparse
 import sys
 import os
@@ -234,21 +235,24 @@ def build_filepath(
     return None
 
 
-def load_universe(SimulationPrefix, traj_suffix):
+def load_universe(simulation_prefix, traj_suffix):
 
     U = mda.Universe(
-        SimulationPrefix + ".gro",
-        SimulationPrefix + traj_suffix + ".trr"
+        simulation_prefix + ".gro",
+        simulation_prefix + traj_suffix + ".trr"
     )
 
+    align_traj(U)
+    return U
+
+
+def align_traj(universe):
     align.AlignTraj(
-        U,
-        U,
+        universe,
+        universe,
         select='name CA',
         in_memory=True
     ).run()
-
-    return U
 
 
 def show_universe_information(U: mda.Universe):
@@ -288,6 +292,8 @@ def analyzeMD(arguments):
         pca_series = []
         total_times = []
 
+        samples = []
+
         for i, SP in enumerate(simulation_prefixes):
             print(f"Processsing {i + 1} of {len(simulation_prefixes)}: {SP}")
             u = load_universe(SP, arguments.TrajSuffix)
@@ -303,6 +309,7 @@ def analyzeMD(arguments):
             # Store total time in nanoseconds;
             total_times.append(u.trajectory.totaltime / 1000)
 
+            #samples.append(extract_slice_representation(u))
             u.trajectory.close()
             del u
 
@@ -350,10 +357,52 @@ def analyzeMD(arguments):
             )
 
 
+def extract_slice_representation(u: mda.Universe, slice_position: Optional[Tuple[int, int]] = None):
+    L = len(u._trajectory)
+
+    def convert_to_frame(pct, L):
+        return int(pct * L)
+
+    slice_position = (
+        convert_to_frame(0.85, L),
+        convert_to_frame(0.9, L)
+    )
+
+    new_u = snapshot_to_universe(
+        u.atoms,
+        [k for k in u.trajectory[slice(*slice_position)]]
+    )
+
+    align_traj(new_u)
+    AlignType.MEAN_FRAME.extract(
+        new_u.trajectory.timeseries(asel="protein and name CA")
+    )
+    return new_u
+
 
 class AlignType(enum.Enum):
+    """
+    Extracts a single frame structural summary from
+    trajectories by using different methods.
+    """
     FIRST_FRAME = 0
     MEAN_FRAME = 1
+
+    def extract(self, traj):
+        if self == AlignType.FIRST_FRAME:
+            return traj[:, 0, :][:, None, :]
+        if self == AlignType.MEAN_FRAME:
+            return traj.mean(axis=1)[:, None, :]
+
+
+def snapshot_to_universe(atoms, snapshot):
+    """Converts"""
+    # Make a reference structure (need to reshape into a
+    # 1-frame "trajectory").
+    return mda.Merge(atoms).load_new(
+        snapshot,
+        order="afc"
+    )
 
 
 def align_universe(u: mda.Universe,
@@ -362,53 +411,45 @@ def align_universe(u: mda.Universe,
 
     atoms = u.select_atoms(sel)
 
-    if align_type == AlignType.MEAN_FRAME:
-        ref_coordinates = u.trajectory.timeseries(asel=atoms).mean(axis=1)
-    else:
-        ref_coordinates = u.trajectory.timeseries(asel=atoms)[:, 0, :]
+    ref_coordinates = align_type.extract(u.trajectory.timeseries(asel=atoms))
 
-    REF = ref_coordinates.copy()
-
-    # Make a reference structure (need to reshape into a
-    # 1-frame "trajectory").
-    ref = mda.Merge(atoms).load_new(
-        ref_coordinates[:, None, :],
-        order="afc"
-    )
+    ref = snapshot_to_universe(atoms, ref_coordinates)
 
     align.AlignTraj(
         u,
         ref,
-        select="protein and name CA",
+        select=sel,
         in_memory=True
     ).run()
 
-    return REF, atoms
+    return ref, u
 
 
 def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
     rmsds = []
 
     J = len(u.trajectory)
+    atoms = u.select_atoms("protein and name CA")
 
-    ref, atoms = align_universe(u, AlignType.FIRST_FRAME)
+    ref, u = align_universe(u, AlignType.FIRST_FRAME)
+    ref_atoms = ref.select_atoms("protein and name CA")
     for t, traj in enumerate(u.trajectory):
         if verbose:
             print(f"{t} of {J}")
 
-        v = rms.rmsd(ref, atoms.positions)
-        rmsds.append(v)
+        frame_rmsd = rms.rmsd(ref_atoms.positions, atoms.positions)
+        rmsds.append(frame_rmsd)
 
     # os.remove("rmsfit.xtc")
 
     return rmsds
 
 
-def time_series_rmsf(u, end_pct=100) -> List[float]:
+def time_series_rmsf(u, end_pct=100, sel="protein and name CA") -> List[float]:
 
-    ref, atoms = align_universe(u, AlignType.MEAN_FRAME)
+    _, aligned_u = align_universe(u, AlignType.MEAN_FRAME)
 
-    rmsf = rms.RMSF(atoms).run().rmsf
+    rmsf = rms.RMSF(aligned_u.select_atoms(sel=sel)).run().rmsf
 
     return cast(List[float], rmsf)
 
