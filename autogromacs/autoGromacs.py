@@ -15,11 +15,13 @@ import itertools
 from .core.messages import welcome_message
 from .core import settings
 
+from . import pdb_operations
 from . import mdp_control
 
 IONS_MDP = "ions.mdp"
 EM_MDP = "em.mdp"
 NVT_MDP = "nvt.mdp"
+NPT_MDP = "npt.mdp"
 
 
 def message(func, msg):
@@ -467,7 +469,7 @@ class GromacsSimulation(object):
         # TODO: REWORK THIS
         if charge >= 0:
             print("System has positive charge .")
-            print(f"Adding {charge} CL ions to Neutralize the system")
+            print(f"Adding {charge} {arguments.nname} ions to Neutralize the system")
             genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Negative Ions "
@@ -485,7 +487,7 @@ class GromacsSimulation(object):
 
         elif charge < 0:
             print("charge is negative")
-            print(f"Adding {-charge} CL ions to Neutralize the system")
+            print(f"Adding {-charge} {arguments.pname} ions to Neutralize the system")
             genion = settings.g_prefix + "genion"
             step_no = "6"
             step_name = "Adding Positive Ions "
@@ -578,13 +580,13 @@ class GromacsSimulation(object):
         step_no = "11"
         step_name = "Preparing files for NPT Equilibration"
 
-        if not os.path.isfile(self.to_wd("npt.mdp")):
-            mdp_control.load_mdp(self, arguments, "npt.mdp")
+        if not os.path.isfile(self.to_wd(NPT_MDP)):
+            mdp_control.load_mdp(self, arguments, NPT_MDP)
 
         # grompp -f nvt.mdp -c em.gro -p topol.top -o nvt.tpr
         command = [
             grompp,
-            "-f", self.to_wd("npt.mdp"),
+            "-f", self.to_wd(NPT_MDP),
             "-c", self.to_wd("nvt.gro"),
             "-r", self.to_wd("nvt.gro"),
             "-p", self.to_wd("topol.top"),
