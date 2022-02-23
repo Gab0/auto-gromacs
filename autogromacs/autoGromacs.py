@@ -15,7 +15,6 @@ import itertools
 from .core.messages import welcome_message
 from .core import settings
 
-from . import pdb_operations
 from . import mdp_control
 
 IONS_MDP = "ions.mdp"
