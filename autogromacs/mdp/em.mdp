@@ -1,15 +1,15 @@
 ; Parameters describing what to do, when to stop and what to save
 integrator    = steep        ; Algorithm (steep = steepest descent minimization)
-emtol         = 100.0        ; Stop minimization when the maximum force < 1.0
+emtol         = 10.0        ; Stop minimization when the maximum force < 1.0
                              ;  kJ/mol
 emstep        = 0.01         ; Energy step size
-nsteps        = 50000        ; Maximum number of (minimization) steps to
+nsteps        = 500000       ; Maximum number of (minimization) steps to
                              ; perform
 energygrps    = system       ; Which energy group(s) to write to disk
 
 ; Parameters describing how to find the neighbors of each atom and how to
 ;  calculate the interactions
-nstlist       = 1            ; Frequency to update the neighbor list and long
+nstlist       = 30           ; Frequency to update the neighbor list and long
                              ; range forces
 rlist         = 1.0          ; Cut-off for making neighbor list
                              ; (short range forces)
