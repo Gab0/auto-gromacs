@@ -1,6 +1,5 @@
 from typing import List, Optional, cast, Tuple
 import enum
-import copy
 import argparse
 import sys
 import os
@@ -10,11 +9,23 @@ import warnings
 import numpy as np
 
 import MDAnalysis as mda
-from MDAnalysis.analysis import align, rms, pca
+from MDAnalysis.analysis import align, rms, pca, psa
 
 from . import mdplots
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+STANDARD_SELECTION = "protein and name CA"
+
+
+class AnalysisSession():
+    """Holds what is saved from all loaded Universes for a single analysis."""
+    labels: List[str] = []
+    rmsd_series: List[np.ndarray] = []
+    rmsf_series: List[np.ndarray] = []
+    pca_series: List[np.ndarray] = []
+    total_times: List[int] = []
+    samples: List[mda.Universe] = []
 
 
 def parse_arguments():
@@ -39,6 +50,7 @@ def parse_arguments():
 
 
 def autodetect_files(root_path, pattern="md.gro") -> List[str]:
+    """Autodetect GROMACS simulation directories inside a 'project' folder."""
     def file_to_prefix(f):
         ext = f.split(".")[-1]
         return f.replace("." + ext, "")
@@ -105,10 +117,14 @@ def get_label(u: mda.Universe) -> str:
 
 
 def process_simulation_name(name: str) -> str:
-    NB = re.findall(r"\d+-{0,1}\d*", name)
+    """
+    Convert internal simulation codes into
+    readable names for labels etc...
+    """
+    number = re.findall(r"\d+-{0,1}\d*", name)
 
-    if NB:
-        number = NB[0]
+    if number:
+        number = number[0]
         if number == "0":
             return "Original"
 
@@ -116,43 +132,65 @@ def process_simulation_name(name: str) -> str:
 
     return name
 
-def RMSDStudy(us, unames):
-    POS = []
 
-    traj_idx = [0, -1]
-    ATOM_ID = "name CA"
-    ATOM_ID = "backbone"
-
-    for i, universe in enumerate(us):
-        bb = universe.select_atoms(ATOM_ID)
-        for j in traj_idx:
-            universe.trajectory[j]
-            w = Positions(bb.positions.copy(), unames[i], j)
-            POS.append(w)
-
-    return POS
+def extract_positions(u: mda.Universe, sel=STANDARD_SELECTION):
+    return u.trajectory.timeseries(asel=u.select_atoms(sel))
 
 
-def pairwise_rmsds(POS):
-    SIZE = len(POS)
-    w = np.zeros(shape=(SIZE, SIZE))
-    for i, pi in enumerate(POS):
-        for j, pj in enumerate(POS):
+def pairwise_rmsds(universes: List[mda.Universe]):
+    """Compute pairwise RMSDs for position snapshots."""
+    size = len(universes)
+    rmsd_matrix = np.zeros(shape=(size, size))
+    for i, universe_i in enumerate(universes):
+        for j, universe_j in enumerate(universes):
             if i == j:
-                v = 0
+                rmsd = 0
             else:
-                v = rms.rmsd(pi.positions, pj.positions)
-            w[i, j] = v
-            w[j, i] = v
+                align.AlignTraj(
+                    universe_i,
+                    universe_i,
+                    select=STANDARD_SELECTION,
+                    in_memory=True
+                )
 
-    return w
+                align.AlignTraj(
+                    universe_i,
+                    universe_j,
+                    select=STANDARD_SELECTION,
+                    in_memory=True
+                )
+
+                rmsd = rms.rmsd(
+                    extract_positions(universe_i),
+                    extract_positions(universe_j)
+                )
+
+            rmsd_matrix[i, j] = rmsd
+            rmsd_matrix[j, i] = rmsd
+
+    return rmsd_matrix
 
 
-def loadSimulationPrefixes(arguments):
+def pairwise_rmsds_traj(universes: List[mda.Universe], labels: List[str]):
+    """Calculate pairwise RMSD for multiple trajectories using Hausdorff distance."""
+
+    ps = psa.PSAnalysis(universes,
+                        labels=labels,
+                        reference=universes[0],
+                        ref_frame=0,
+                        select=STANDARD_SELECTION,
+                        path_select=STANDARD_SELECTION)
+
+    ps.generate_paths(align=True, save=False, weights='mass')
+    ps.run(metric='hausdorff')
+    return ps.D
+
+
+def load_simulation_prefixes(arguments):
 
     simulation_prefixes = []
-    for AutoDetectDir in arguments.AutoDetect:
-        simulation_prefixes += autodetect_files(AutoDetectDir)
+    for autodetect_dir in arguments.AutoDetect:
+        simulation_prefixes += autodetect_files(autodetect_dir)
 
     if arguments.FilePrefix is not None:
         simulation_prefixes += arguments.FilePrefix
@@ -237,32 +275,33 @@ def build_filepath(
 
 def load_universe(simulation_prefix, traj_suffix):
 
-    U = mda.Universe(
+    universe = mda.Universe(
         simulation_prefix + ".gro",
         simulation_prefix + traj_suffix + ".trr"
     )
 
-    align_traj(U)
-    return U
+    align_traj(universe)
+    return universe
 
 
 def align_traj(universe):
     align.AlignTraj(
         universe,
         universe,
-        select='name CA',
+        select=STANDARD_SELECTION,
         in_memory=True
     ).run()
 
 
 def show_universe_information(U: mda.Universe):
-    print(f"# Atoms:  {len(U.atoms)}")
-    print(f"# Frames: {len(U.trajectory)}")
+    print(f"# Atoms:    {len(U.atoms)}")
+    print(f"# Frames:   {len(U.trajectory)}")
+    print(f"# Residues: {len(U.residues)}")
 
 
-def analyzeMD(arguments):
+def global_analysis(arguments):
 
-    simulation_prefixes = loadSimulationPrefixes(arguments)
+    simulation_prefixes = load_simulation_prefixes(arguments)
 
     if arguments.SimulationSelection:
         user_input = arguments.SimulationSelection
@@ -274,110 +313,124 @@ def analyzeMD(arguments):
         user_input
     )
 
-    # us = map(lambda sp: load_universe(sp, arguments), simulation_prefixes)
-    # can access via segid (4AKE) and atom name
-    # we take the first atom named N and the last atom named C
-    # nterm = u.select_atoms('segid 4AKE and name N')[0]
-    # cterm = u.select_atoms('segid 4AKE and name C')[-1]
-
     base_filepath = arguments.WriteOutput if arguments.WriteOutput else None
 
     print("Data loading done.")
 
     if arguments.DoTimeseries:
         print("Processing timeseries RMSD plots.")
-        labels = []
-        rmsd_series = []
-        rmsf_series = []
-        pca_series = []
-        total_times = []
+        session = AnalysisSession()
+        for i, simulation_prefix in enumerate(simulation_prefixes):
+            print(f"Processsing {i + 1} of {len(simulation_prefixes)}: {simulation_prefix}")
+            universe = load_universe(simulation_prefix, arguments.TrajSuffix)
 
-        samples = []
+            show_universe_information(universe)
 
-        for i, SP in enumerate(simulation_prefixes):
-            print(f"Processsing {i + 1} of {len(simulation_prefixes)}: {SP}")
-            u = load_universe(SP, arguments.TrajSuffix)
+            session.labels.append(get_label(universe))
+            session.rmsd_series.append(time_series_rmsd(universe, arguments))
+            session.rmsf_series.append(time_series_rmsf(universe))
 
-            show_universe_information(u)
-
-            labels.append(get_label(u))
-            rmsd_series.append(time_series_rmsd(u, arguments))
-            rmsf_series.append(time_series_rmsf(u))
-
-            pca_series.append(analyze_pca(u))
+            session.pca_series.append(analyze_pca(universe))
 
             # Store total time in nanoseconds;
-            total_times.append(u.trajectory.totaltime / 1000)
+            session.total_times.append(universe.trajectory.totaltime / 1000)
 
-            #samples.append(extract_slice_representation(u))
+            session.samples.append(extract_slice_representation(universe))
             u.trajectory.close()
             del u
 
-        if True:
-            mdplots.show_rms_series_stacked(
-                rmsd_series,
-                labels,
-                total_times,
-                build_filepath(base_filepath, ["ts", "rmsd"], arguments),
-                "RMSDt"
-            )
+        plot_stacked_series(arguments, base_filepath, session)
+        # plot_monolithic_series(arguments, base_filepath, session)
+        #
+        selection_frames = list(map(extract_slice_representation, session.samples))
+        rmsd_matrix = pairwise_rmsds(selection_frames)
+        print(rmsd_matrix)
+        mdplots.show_matrix(rmsd_matrix, session.labels, "pairwise_rmsds.jpg")
 
-            mdplots.show_rms_series_stacked(
-                rmsf_series,
-                labels,
-                total_times,
-                build_filepath(base_filepath, ["ts", "rmsf"], arguments),
-                "RMSF"
-            )
-
-            mdplots.show_rms_series_stacked(
-                pca_series,
-                labels,
-                total_times,
-                build_filepath(base_filepath, ["ts", "variance"], arguments),
-                "PCA"
-            )
+        #rmsd_matrix_traj = pairwise_rmsds_traj(session.samples, session.labels)
+        #mdplots.show_matrix(rmsd_matrix_traj, session.labels, "pairwise_rmsds_traj.jpg")
 
 
-        if False:
-            mdplots.show_rms_series_monolithic(
-                rmsd_series,
-                labels,
-                total_times,
-                build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
-                "RMSDt"
-            )
+def plot_stacked_series(arguments, base_filepath, session):
+    mdplots.show_rms_series_stacked(
+        session.rmsd_series,
+        session.labels,
+        session.total_times,
+        build_filepath(base_filepath, ["ts", "rmsd"], arguments),
+        "RMSDt"
+    )
 
-            mdplots.show_rms_series_monolithic(
-                rmsf_series,
-                labels,
-                total_times,
-                build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
-                "RMSF"
-            )
+    mdplots.show_rms_series_stacked(
+        session.rmsf_series,
+        session.labels,
+        session.total_times,
+        build_filepath(base_filepath, ["ts", "rmsf"], arguments),
+        "RMSF"
+    )
+
+    mdplots.show_rms_series_stacked(
+        session.pca_series,
+        session.labels,
+        session.total_times,
+        build_filepath(base_filepath, ["ts", "variance"], arguments),
+        "PCA"
+    )
 
 
-def extract_slice_representation(u: mda.Universe, slice_position: Optional[Tuple[int, int]] = None):
-    L = len(u._trajectory)
+def plot_monolithic_series(arguments, base_filepath, session):
+    mdplots.show_rms_series_monolithic(
+        session.rmsd_series,
+        session.labels,
+        session.total_times,
+        build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
+        "RMSDt"
+    )
+
+    mdplots.show_rms_series_monolithic(
+        session.rmsf_series,
+        session.labels,
+        session.total_times,
+        build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
+        "RMSF"
+    )
+
+
+def extract_slice_representation(
+        u: mda.Universe,
+        slice_position: Optional[Tuple[int, int]] = None
+) -> mda.Universe:
+    trajectory_length = len(u.trajectory)
 
     def convert_to_frame(pct, L):
         return int(pct * L)
 
     slice_position = (
-        convert_to_frame(0.85, L),
-        convert_to_frame(0.9, L)
+        convert_to_frame(0.85, trajectory_length),
+        convert_to_frame(0.9, trajectory_length)
     )
 
-    new_u = snapshot_to_universe(
-        u.atoms,
-        [k for k in u.trajectory[slice(*slice_position)]]
+    new_u = mda.Universe(u.filename, u.trajectory.filename)
+    new_u.transfer_to_memory(
+        start=slice_position[0],
+        stop=slice_position[1],
+        verbose=False
     )
-
     align_traj(new_u)
-    AlignType.MEAN_FRAME.extract(
-        new_u.trajectory.timeseries(asel="protein and name CA")
-    )
     return new_u
+
+
+def extract_frame(u: mda.Universe):
+    atoms = u.select_atoms(STANDARD_SELECTION)
+    traj = u.trajectory.timeseries(asel=atoms)
+    try:
+        return traj.mean(axis=1)
+    except np.AxisError as error:
+        print(traj.shape)
+        print(traj.shape)
+        raise error
+    # return AlignType.MEAN_FRAME.extract(
+    #     traj
+    # )
 
 
 class AlignType(enum.Enum):
@@ -388,32 +441,46 @@ class AlignType(enum.Enum):
     FIRST_FRAME = 0
     MEAN_FRAME = 1
 
-    def extract(self, traj):
+    def extract_(self, traj):
+        """
+        Extracts a single frame representation from a trajectory,
+        based on the method represented by the instantiated Enum (self).
+        """
         if self == AlignType.FIRST_FRAME:
             return traj[:, 0, :][:, None, :]
         if self == AlignType.MEAN_FRAME:
             return traj.mean(axis=1)[:, None, :]
 
+    def extract(self, universe):
+        """
+        Extracts a single frame representation from a trajectory,
+        encapsulated in a Universe object.
+        """
+        new_universe = universe.copy()
+        if self == AlignType.FIRST_FRAME:
+            new_universe.transfer_to_memory(start=0, stop=1)
+        if self == AlignType.MEAN_FRAME:
+            new_universe.transfer_to_memory()
 
-def snapshot_to_universe(atoms, snapshot):
-    """Converts"""
+        return new_universe
+
+
+def snapshot_to_universe(source_universe, new_trajectory) -> mda.Universe:
+    """Converts a frame snapshot into a universe."""
     # Make a reference structure (need to reshape into a
     # 1-frame "trajectory").
-    return mda.Merge(atoms).load_new(
-        snapshot,
-        order="afc"
-    )
+
+    universe = source_universe.load_new(new_trajectory)
+
+    #universe.trajectory.filename = source_universe.trajectory.filename
+    return universe
 
 
 def align_universe(u: mda.Universe,
                    align_type: AlignType,
                    sel: str = "protein and name CA"):
 
-    atoms = u.select_atoms(sel)
-
-    ref_coordinates = align_type.extract(u.trajectory.timeseries(asel=atoms))
-
-    ref = snapshot_to_universe(atoms, ref_coordinates)
+    ref = align_type.extract(u)
 
     align.AlignTraj(
         u,
@@ -425,13 +492,14 @@ def align_universe(u: mda.Universe,
     return ref, u
 
 
-def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
+def time_series_rmsd(universe: mda.Universe, arguments, verbose=False) -> List[float]:
+    """Extracts the timeseries RMSD from a Universe."""
     rmsds = []
 
-    J = len(u.trajectory)
-    atoms = u.select_atoms("protein and name CA")
+    J = len(universe.trajectory)
+    atoms = universe.select_atoms("protein and name CA")
 
-    ref, u = align_universe(u, AlignType.FIRST_FRAME)
+    ref, u = align_universe(universe, AlignType.FIRST_FRAME)
     ref_atoms = ref.select_atoms("protein and name CA")
     for t, traj in enumerate(u.trajectory):
         if verbose:
@@ -441,11 +509,10 @@ def time_series_rmsd(u, arguments, verbose=False) -> List[float]:
         rmsds.append(frame_rmsd)
 
     # os.remove("rmsfit.xtc")
-
     return rmsds
 
 
-def time_series_rmsf(u, end_pct=100, sel="protein and name CA") -> List[float]:
+def time_series_rmsf(u, sel="protein and name CA") -> List[float]:
 
     _, aligned_u = align_universe(u, AlignType.MEAN_FRAME)
 
@@ -454,7 +521,8 @@ def time_series_rmsf(u, end_pct=100, sel="protein and name CA") -> List[float]:
     return cast(List[float], rmsf)
 
 
-def analyze_pca(u: mda.Universe, n=40):
+def analyze_pca(u: mda.Universe, n_dimensions=40):
+    """Fetch PCA component contribution values for a single trajectory."""
     PCA = pca.PCA(u, select='backbone')
     space = PCA.run()
 
@@ -463,14 +531,15 @@ def analyze_pca(u: mda.Universe, n=40):
     print(w)
 
     return [
-        space.variance[:n],
-        space.cumulated_variance[:n]
+        space.variance[:n_dimensions],
+        space.cumulated_variance[:n_dimensions]
     ]
 
 
 def main():
+    """Executable entrypoint."""
     arguments = parse_arguments()
-    analyzeMD(arguments)
+    global_analysis(arguments)
 
 
 if __name__ == "__main__":

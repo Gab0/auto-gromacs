@@ -169,6 +169,7 @@ def show_rms_series_stacked(
             colors = ["black", "orange"]
             styles = ["-", "--"]
             INITIALIZED = False
+
             for sY, plot_fn, style, color in zip(Y, stacked_fn, styles, colors):
                 if INITIALIZED:
                     cax = axk[i].twinx()
