@@ -160,10 +160,18 @@ def pairwise_rmsds(universes: List[mda.Universe]):
                     in_memory=True
                 )
 
+                pos_i = extract_positions(universe_i)
+                pos_j = extract_positions(universe_j)
+
                 rmsd = rms.rmsd(
-                    extract_positions(universe_i),
-                    extract_positions(universe_j)
+                    pos_i.mean(axis=1)[:, None, :],
+                    pos_j.mean(axis=1)[:, None, :],
                 )
+
+                # rmsd = rms.rmsd(
+                #     pos_i,
+                #     pos_j
+                # )
 
             rmsd_matrix[i, j] = rmsd
             rmsd_matrix[j, i] = rmsd
@@ -294,12 +302,14 @@ def align_traj(universe):
 
 
 def show_universe_information(U: mda.Universe):
+    """Show some basic stats for an Universe."""
     print(f"# Atoms:    {len(U.atoms)}")
     print(f"# Frames:   {len(U.trajectory)}")
     print(f"# Residues: {len(U.residues)}")
 
 
 def global_analysis(arguments):
+    """Main pipeline for analysis methods on a trajectory group."""
 
     simulation_prefixes = load_simulation_prefixes(arguments)
 
@@ -313,7 +323,7 @@ def global_analysis(arguments):
         user_input
     )
 
-    base_filepath = arguments.WriteOutput if arguments.WriteOutput else None
+    base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
 
     print("Data loading done.")
 
@@ -336,16 +346,20 @@ def global_analysis(arguments):
             session.total_times.append(universe.trajectory.totaltime / 1000)
 
             session.samples.append(extract_slice_representation(universe))
-            u.trajectory.close()
-            del u
+            universe.trajectory.close()
+            del universe
 
         plot_stacked_series(arguments, base_filepath, session)
         # plot_monolithic_series(arguments, base_filepath, session)
-        #
+
         selection_frames = list(map(extract_slice_representation, session.samples))
         rmsd_matrix = pairwise_rmsds(selection_frames)
         print(rmsd_matrix)
-        mdplots.show_matrix(rmsd_matrix, session.labels, "pairwise_rmsds.jpg")
+        mdplots.show_matrix(
+            rmsd_matrix,
+            session.labels,
+            f"{base_filepath}_pairwise_rmsds.jpg"
+        )
 
         #rmsd_matrix_traj = pairwise_rmsds_traj(session.samples, session.labels)
         #mdplots.show_matrix(rmsd_matrix_traj, session.labels, "pairwise_rmsds_traj.jpg")
@@ -441,7 +455,7 @@ class AlignType(enum.Enum):
     FIRST_FRAME = 0
     MEAN_FRAME = 1
 
-    def extract_(self, traj):
+    def extract(self, traj):
         """
         Extracts a single frame representation from a trajectory,
         based on the method represented by the instantiated Enum (self).
@@ -450,19 +464,6 @@ class AlignType(enum.Enum):
             return traj[:, 0, :][:, None, :]
         if self == AlignType.MEAN_FRAME:
             return traj.mean(axis=1)[:, None, :]
-
-    def extract(self, universe):
-        """
-        Extracts a single frame representation from a trajectory,
-        encapsulated in a Universe object.
-        """
-        new_universe = universe.copy()
-        if self == AlignType.FIRST_FRAME:
-            new_universe.transfer_to_memory(start=0, stop=1)
-        if self == AlignType.MEAN_FRAME:
-            new_universe.transfer_to_memory()
-
-        return new_universe
 
 
 def snapshot_to_universe(source_universe, new_trajectory) -> mda.Universe:
@@ -478,18 +479,16 @@ def snapshot_to_universe(source_universe, new_trajectory) -> mda.Universe:
 
 def align_universe(u: mda.Universe,
                    align_type: AlignType,
-                   sel: str = "protein and name CA"):
-
-    ref = align_type.extract(u)
+                   sel: str = STANDARD_SELECTION):
 
     align.AlignTraj(
         u,
-        ref,
+        u,
         select=sel,
         in_memory=True
     ).run()
 
-    return ref, u
+    return u
 
 
 def time_series_rmsd(universe: mda.Universe, arguments, verbose=False) -> List[float]:
@@ -497,26 +496,26 @@ def time_series_rmsd(universe: mda.Universe, arguments, verbose=False) -> List[f
     rmsds = []
 
     J = len(universe.trajectory)
-    atoms = universe.select_atoms("protein and name CA")
+    atoms = universe.select_atoms(STANDARD_SELECTION)
 
-    ref, u = align_universe(universe, AlignType.FIRST_FRAME)
-    ref_atoms = ref.select_atoms("protein and name CA")
+    u = align_universe(universe, AlignType.FIRST_FRAME)
+    ref = AlignType.FIRST_FRAME.extract(extract_positions(u)).reshape(-1, 3)
     for t, traj in enumerate(u.trajectory):
         if verbose:
             print(f"{t} of {J}")
 
-        frame_rmsd = rms.rmsd(ref_atoms.positions, atoms.positions)
+        frame_rmsd = rms.rmsd(ref, atoms.positions)
         rmsds.append(frame_rmsd)
 
     # os.remove("rmsfit.xtc")
     return rmsds
 
 
-def time_series_rmsf(u, sel="protein and name CA") -> List[float]:
+def time_series_rmsf(u, sel=STANDARD_SELECTION) -> List[float]:
 
-    _, aligned_u = align_universe(u, AlignType.MEAN_FRAME)
+    align_universe(u, AlignType.MEAN_FRAME)
 
-    rmsf = rms.RMSF(aligned_u.select_atoms(sel=sel)).run().rmsf
+    rmsf = rms.RMSF(u.select_atoms(sel=sel)).run().rmsf
 
     return cast(List[float], rmsf)
 
