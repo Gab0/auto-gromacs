@@ -182,6 +182,16 @@ def pairwise_rmsds(universes: List[mda.Universe]):
 def pairwise_rmsds_traj(universes: List[mda.Universe], labels: List[str]):
     """Calculate pairwise RMSD for multiple trajectories using Hausdorff distance."""
 
+    # Align trajectories because there seems to be a bug
+    # in PSAnalysis.
+    for k in universes[1:]:
+        align.AlignTraj(
+            k,
+            universes[0],
+            select=STANDARD_SELECTION,
+            in_memory=True
+        )
+
     ps = psa.PSAnalysis(universes,
                         labels=labels,
                         reference=universes[0],
@@ -189,7 +199,7 @@ def pairwise_rmsds_traj(universes: List[mda.Universe], labels: List[str]):
                         select=STANDARD_SELECTION,
                         path_select=STANDARD_SELECTION)
 
-    ps.generate_paths(align=True, save=False, weights='mass')
+    ps.generate_paths(align=False, save=False, weights='mass')
     ps.run(metric='hausdorff')
     return ps.D
 
@@ -354,15 +364,20 @@ def global_analysis(arguments):
 
         selection_frames = list(map(extract_slice_representation, session.samples))
         rmsd_matrix = pairwise_rmsds(selection_frames)
+
         print(rmsd_matrix)
         mdplots.show_matrix(
             rmsd_matrix,
             session.labels,
-            f"{base_filepath}_pairwise_rmsds.jpg"
+            build_filepath(base_filepath, ["pairwise", "rmsds"], arguments)
         )
 
-        #rmsd_matrix_traj = pairwise_rmsds_traj(session.samples, session.labels)
-        #mdplots.show_matrix(rmsd_matrix_traj, session.labels, "pairwise_rmsds_traj.jpg")
+        rmsd_matrix_traj = pairwise_rmsds_traj(session.samples, session.labels)
+        mdplots.show_matrix(
+            rmsd_matrix_traj,
+            session.labels,
+            build_filepath(base_filepath, ["pairwise", "rmsds", "traj"], arguments)
+        )
 
 
 def plot_stacked_series(arguments, base_filepath, session):
@@ -431,20 +446,6 @@ def extract_slice_representation(
     )
     align_traj(new_u)
     return new_u
-
-
-def extract_frame(u: mda.Universe):
-    atoms = u.select_atoms(STANDARD_SELECTION)
-    traj = u.trajectory.timeseries(asel=atoms)
-    try:
-        return traj.mean(axis=1)
-    except np.AxisError as error:
-        print(traj.shape)
-        print(traj.shape)
-        raise error
-    # return AlignType.MEAN_FRAME.extract(
-    #     traj
-    # )
 
 
 class AlignType(enum.Enum):
