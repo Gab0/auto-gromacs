@@ -12,6 +12,17 @@ plt.rcParams["axes.labelsize"] = 15
 plt.rcParams["figure.dpi"] = 700
 
 
+def _(x, _):
+    return x
+
+
+class ModeParameters():
+    x_label = ""
+    y_label = r"$\Delta$ RMSD ($\AA$)"
+    enforce_ticks = False
+    make_x = _
+
+
 def show_matrix(results, labels, filepath: Union[str, None]):
     fig, ax = plt.subplots()
 
@@ -33,15 +44,13 @@ def show_matrix(results, labels, filepath: Union[str, None]):
     execute_output_plot(filepath)
 
 
-def process_label_names(mode: str):
+def load_mode_parameters(mode: str):
 
     def to_time_x(X, t):
         return frames_to_time(X, t)
 
-    def _(X, _):
-        return X
-
     YL = r"$\Delta$ RMSD ($\AA$)"
+    enforce_ticks = True
     make_x = _
     if mode == "RMSDt":
         XL = "Tempo (ns)"
@@ -53,10 +62,14 @@ def process_label_names(mode: str):
     elif mode == "PCA":
         XL = "Componente"
         YL = "Variância Acumulada"
+    elif mode == "SASA":
+        XL = "Frame"
+        YL = "SASA ($\AA$²)"
+        enforce_ticks = False
     else:
         raise Exception("Unknown plot identifier.")
 
-    return (XL, YL, make_x)
+    return (XL, YL, make_x, enforce_ticks)
 
 
 def show_rms_series_monolithic(
@@ -70,7 +83,7 @@ def show_rms_series_monolithic(
 
     fig.set_figwidth(9.6)
 
-    XL, YL, make_x = process_label_names(mode)
+    XL, YL, make_x, enforce_ticks = load_mode_parameters(mode)
 
     for i, Xa in enumerate(rms_series):
         ax.plot(make_x(range(len(Xa)), total_times[i]), Xa)
@@ -158,7 +171,7 @@ def show_rms_series_stacked(
     stacked_fn = [plot_bar, plot_line]
     for i, (Y, label) in enumerate(zip(rms_series, labels)):
 
-        XL, YL, make_x = process_label_names(mode)
+        XL, YL, make_x, enforce_ticks = load_mode_parameters(mode)
 
         X: Union[List[float], List[int]] = make_x(
             list(range(N)),
@@ -185,12 +198,14 @@ def show_rms_series_stacked(
                     assert len(X) == len(sY)
                     raise(e)
 
-                enforce_ax_ticks(cax, round(max(sY)), round(max(sY)))
+                if enforce_ticks:
+                    enforce_ax_ticks(cax, round(max(sY)), round(max(sY)))
                 INITIALIZED = True
 
         elif Values.ndim == 2:
             axk[i].plot(X, Y, "-", color="black")
-            enforce_ax_ticks(axk[i], Y_MAX, 5)
+            if enforce_ticks:
+                enforce_ax_ticks(axk[i], Y_MAX, 5)
         else:
             print(f"{Values.ndim}")
             raise Exception(f"Unexpected values shape of {Values.shape}")

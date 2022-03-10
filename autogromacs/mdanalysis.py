@@ -5,7 +5,7 @@ import sys
 import os
 import re
 import warnings
-
+import freesasa
 import numpy as np
 
 import MDAnalysis as mda
@@ -26,6 +26,31 @@ class AnalysisSession():
     pca_series: List[np.ndarray] = []
     total_times: List[int] = []
     samples: List[mda.Universe] = []
+    sasa: List[np.ndarray] = []
+
+
+class SeriesMode(enum.Enum):
+    MONOLITHIC = 0
+    STACKED = 1
+
+
+class AlignType(enum.Enum):
+    """
+    Extracts a single frame structural summary from
+    trajectories by using different methods.
+    """
+    FIRST_FRAME = 0
+    MEAN_FRAME = 1
+
+    def extract(self, traj):
+        """
+        Extracts a single frame representation from a trajectory,
+        based on the method represented by the instantiated Enum (self).
+        """
+        if self == AlignType.FIRST_FRAME:
+            return traj[:, 0, :][:, None, :]
+        if self == AlignType.MEAN_FRAME:
+            return traj.mean(axis=1)[:, None, :]
 
 
 def parse_arguments():
@@ -356,72 +381,63 @@ def global_analysis(arguments):
             session.total_times.append(universe.trajectory.totaltime / 1000)
 
             session.samples.append(extract_slice_representation(universe))
+
+            session.sasa.append(analyze_sasa(universe))
             universe.trajectory.close()
             del universe
 
-        plot_stacked_series(arguments, base_filepath, session)
-        # plot_monolithic_series(arguments, base_filepath, session)
+        plot_series(arguments, base_filepath, session, SeriesMode.STACKED)
+        plot_series(arguments, base_filepath, session, SeriesMode.MONOLITHIC)
 
-        selection_frames = list(map(extract_slice_representation, session.samples))
-        rmsd_matrix = pairwise_rmsds(selection_frames)
+        plot_rmsd_matrices(arguments, base_filepath, session)
 
-        print(rmsd_matrix)
-        mdplots.show_matrix(
-            rmsd_matrix,
+
+def plot_rmsd_matrices(arguments, base_filepath, session):
+    selection_frames = list(map(extract_slice_representation, session.samples))
+    rmsd_matrix = pairwise_rmsds(selection_frames)
+
+    print(rmsd_matrix)
+    mdplots.show_matrix(
+        rmsd_matrix,
+        session.labels,
+        build_filepath(base_filepath, ["pairwise", "rmsds"], arguments)
+    )
+
+    rmsd_matrix_traj = pairwise_rmsds_traj(session.samples, session.labels)
+    mdplots.show_matrix(
+        rmsd_matrix_traj,
+        session.labels,
+        build_filepath(base_filepath, ["pairwise", "rmsds", "traj"], arguments)
+    )
+
+
+def plot_series(arguments, base_filepath, session, series_mode=SeriesMode.MONOLITHIC):
+    series_qualifiers = {
+        SeriesMode.MONOLITHIC: {
+            "name_appendix": ["mono"],
+            "function": mdplots.show_rms_series_monolithic
+        },
+        SeriesMode.STACKED: {
+            "name_appendix": [],
+            "function": mdplots.show_rms_series_stacked
+        }
+    }
+
+    Q = series_qualifiers[series_mode]
+
+    def plot(Q, data, name_segments, mode):
+        Q["function"](
+            data,
             session.labels,
-            build_filepath(base_filepath, ["pairwise", "rmsds"], arguments)
+            session.total_times,
+            build_filepath(base_filepath, name_segments + Q["name_appendix"], arguments),
+            mode
         )
 
-        rmsd_matrix_traj = pairwise_rmsds_traj(session.samples, session.labels)
-        mdplots.show_matrix(
-            rmsd_matrix_traj,
-            session.labels,
-            build_filepath(base_filepath, ["pairwise", "rmsds", "traj"], arguments)
-        )
-
-
-def plot_stacked_series(arguments, base_filepath, session):
-    mdplots.show_rms_series_stacked(
-        session.rmsd_series,
-        session.labels,
-        session.total_times,
-        build_filepath(base_filepath, ["ts", "rmsd"], arguments),
-        "RMSDt"
-    )
-
-    mdplots.show_rms_series_stacked(
-        session.rmsf_series,
-        session.labels,
-        session.total_times,
-        build_filepath(base_filepath, ["ts", "rmsf"], arguments),
-        "RMSF"
-    )
-
-    mdplots.show_rms_series_stacked(
-        session.pca_series,
-        session.labels,
-        session.total_times,
-        build_filepath(base_filepath, ["ts", "variance"], arguments),
-        "PCA"
-    )
-
-
-def plot_monolithic_series(arguments, base_filepath, session):
-    mdplots.show_rms_series_monolithic(
-        session.rmsd_series,
-        session.labels,
-        session.total_times,
-        build_filepath(base_filepath, ["tsmono", "rmsd"], arguments),
-        "RMSDt"
-    )
-
-    mdplots.show_rms_series_monolithic(
-        session.rmsf_series,
-        session.labels,
-        session.total_times,
-        build_filepath(base_filepath, ["tsmono", "rmsf"], arguments),
-        "RMSF"
-    )
+    plot(Q, session.rmsd_series, ["ts", "rmsd"], "RMSDt")
+    plot(Q, session.rmsf_series, ["ts", "rmsf"], "RMSF")
+    plot(Q, session.pca_series, ["ts", "variance"], "PCA")
+    plot(Q, session.sasa, ["ts", "sasa"], "SASA")
 
 
 def extract_slice_representation(
@@ -446,25 +462,6 @@ def extract_slice_representation(
     )
     align_traj(new_u)
     return new_u
-
-
-class AlignType(enum.Enum):
-    """
-    Extracts a single frame structural summary from
-    trajectories by using different methods.
-    """
-    FIRST_FRAME = 0
-    MEAN_FRAME = 1
-
-    def extract(self, traj):
-        """
-        Extracts a single frame representation from a trajectory,
-        based on the method represented by the instantiated Enum (self).
-        """
-        if self == AlignType.FIRST_FRAME:
-            return traj[:, 0, :][:, None, :]
-        if self == AlignType.MEAN_FRAME:
-            return traj.mean(axis=1)[:, None, :]
 
 
 def snapshot_to_universe(source_universe, new_trajectory) -> mda.Universe:
@@ -534,6 +531,35 @@ def analyze_pca(u: mda.Universe, n_dimensions=40):
         space.variance[:n_dimensions],
         space.cumulated_variance[:n_dimensions]
     ]
+
+
+def get_radius(atom):
+    radii = {
+        "H": 1.1,  # Hydrogen
+        "N": 1.6,  # Nitrogen
+        "C": 1.7,  # Carbon
+        "O": 1.4,  # Oxygen
+        "S": 1.8   # Sulfur
+    }
+
+    for symbol, radius in radii.items():
+        if symbol in atom.name:
+            return radius
+
+    return 0
+
+
+def analyze_sasa(u: mda.Universe):
+    atoms = u.select_atoms(STANDARD_SELECTION)
+    positions = u.trajectory.timeseries(asel=atoms)
+
+    trajectory_sasa = []
+    atom_radius = list(map(get_radius, atoms))
+    for frame in np.swapaxes(positions, 0, 1):
+        sasa = freesasa.calcCoord(frame.reshape(-1), atom_radius).totalArea()
+        trajectory_sasa.append(sasa)
+
+    return np.array(trajectory_sasa)
 
 
 def main():
