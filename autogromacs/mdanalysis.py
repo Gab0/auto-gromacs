@@ -23,6 +23,7 @@ class AnalysisSession():
     labels: List[str] = []
     rmsd_series: List[np.ndarray] = []
     rmsf_series: List[np.ndarray] = []
+    sample_rmsf: List[np.ndarray] = []
     pca_series: List[np.ndarray] = []
     total_times: List[int] = []
     samples: List[mda.Universe] = []
@@ -32,6 +33,21 @@ class AnalysisSession():
 class SeriesMode(enum.Enum):
     MONOLITHIC = 0
     STACKED = 1
+
+
+class OperationMode():
+    """
+    Handles the operation mode for the anaylsis,
+    which is based on the user input arguments.
+    """
+    compare_pairwise = True
+    compare_timeseries = True
+
+    def __init__(self, arguments):
+        if arguments.matrix_only:
+            self.compare_pairwise = True
+            self.compare_timeseries = False
+
 
 
 class AlignType(enum.Enum):
@@ -61,7 +77,7 @@ def parse_arguments():
     parser.add_argument("-d", dest='AutoDetect', nargs="*")
 
     parser.add_argument("-t", dest='TrajSuffix', default="")
-    parser.add_argument("-M", dest='DoMatrix', action="store_true")
+    parser.add_argument("-M", dest='matrix_only', action="store_true")
     parser.add_argument("-T", dest='DoTimeseries', action="store_true")
 
     parser.add_argument("-w", dest='WriteOutput', action="store_true")
@@ -69,6 +85,7 @@ def parse_arguments():
                         dest='OutputIdentifier', required=True)
 
     parser.add_argument('-m', dest='ReferenceMean', action="store_true")
+
 
     parser.add_argument('-s', dest='SimulationSelection')
     return parser.parse_args()
@@ -146,6 +163,7 @@ def process_simulation_name(name: str) -> str:
     Convert internal simulation codes into
     readable names for labels etc...
     """
+
     number = re.findall(r"\d+-{0,1}\d*", name)
 
     if number:
@@ -358,38 +376,45 @@ def global_analysis(arguments):
         user_input
     )
 
+    operation_mode = OperationMode(arguments)
     base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
 
     print("Data loading done.")
 
-    if arguments.DoTimeseries:
-        print("Processing timeseries RMSD plots.")
-        session = AnalysisSession()
-        for i, simulation_prefix in enumerate(simulation_prefixes):
-            print(f"Processsing {i + 1} of {len(simulation_prefixes)}: {simulation_prefix}")
-            universe = load_universe(simulation_prefix, arguments.TrajSuffix)
+    print("Processing timeseries RMSD plots.")
+    session = AnalysisSession()
+    for i, simulation_prefix in enumerate(simulation_prefixes):
+        print(f"Processsing {i + 1} of {len(simulation_prefixes)}: {simulation_prefix}")
+        universe = load_universe(simulation_prefix, arguments.TrajSuffix)
 
-            show_universe_information(universe)
+        show_universe_information(universe)
 
-            session.labels.append(get_label(universe))
+        session.labels.append(get_label(universe))
+        if operation_mode.compare_timeseries:
             session.rmsd_series.append(time_series_rmsd(universe, arguments))
             session.rmsf_series.append(time_series_rmsf(universe))
 
             session.pca_series.append(analyze_pca(universe))
 
-            # Store total time in nanoseconds;
-            session.total_times.append(universe.trajectory.totaltime / 1000)
-
-            session.samples.append(extract_slice_representation(universe))
-
             session.sasa.append(analyze_sasa(universe))
-            universe.trajectory.close()
-            del universe
 
-        plot_series(arguments, base_filepath, session, SeriesMode.STACKED)
-        plot_series(arguments, base_filepath, session, SeriesMode.MONOLITHIC)
+        # Store total time in nanoseconds;
+        session.total_times.append(universe.trajectory.totaltime / 1000)
 
-        plot_rmsd_matrices(arguments, base_filepath, session)
+        if operation_mode.compare_pairwise:
+            sample = extract_slice_representation(universe)
+            session.samples.append(sample)
+            session.sample_rmsf.append(time_series_rmsf(sample))
+
+        universe.trajectory.close()
+        del universe
+
+        if operation_mode.compare_timeseries:
+            plot_series(arguments, base_filepath, session, SeriesMode.STACKED)
+            plot_series(arguments, base_filepath, session, SeriesMode.MONOLITHIC)
+
+        if operation_mode.compare_pairwise:
+            plot_rmsd_matrices(arguments, base_filepath, session)
 
 
 def plot_rmsd_matrices(arguments, base_filepath, session):
@@ -434,6 +459,7 @@ def plot_series(arguments, base_filepath, session, series_mode=SeriesMode.MONOLI
             mode
         )
 
+    plot(Q, session.sample_rmsf, ["ts", "rmsf", "short_sample"], "RMSF")
     plot(Q, session.rmsd_series, ["ts", "rmsd"], "RMSDt")
     plot(Q, session.rmsf_series, ["ts", "rmsf"], "RMSF")
     plot(Q, session.pca_series, ["ts", "variance"], "PCA")
@@ -510,6 +536,7 @@ def time_series_rmsd(universe: mda.Universe, arguments, verbose=False) -> List[f
 
 
 def time_series_rmsf(u, sel=STANDARD_SELECTION) -> List[float]:
+    """Extract RMSF timeseries from an Universe."""
 
     align_universe(u, AlignType.MEAN_FRAME)
 
