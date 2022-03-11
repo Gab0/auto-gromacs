@@ -42,6 +42,7 @@ class OperationMode():
     """
     compare_pairwise = True
     compare_timeseries = True
+    compare_samples = True
 
     def __init__(self, arguments):
         if arguments.matrix_only:
@@ -276,10 +277,12 @@ def ask_simulation_prefixes(simulation_prefixes):
 
 
 def select_simulation_prefixes(simulation_prefixes, input_string):
-    range_descriptors = [
-        v.strip()
-        for v in input_string.split(",")
-    ]
+    range_descriptors = [input_string]
+    if "," in input_string:
+        range_descriptors = [
+            v.strip()
+            for v in input_string.split(",")
+        ]
 
     OutputPrefixes = []
 
@@ -371,10 +374,11 @@ def global_analysis(arguments):
     else:
         user_input = ask_simulation_prefixes(simulation_prefixes)
 
-    simulation_prefixes = select_simulation_prefixes(
-        simulation_prefixes,
-        user_input
-    )
+    if user_input != "":
+        simulation_prefixes = select_simulation_prefixes(
+            simulation_prefixes,
+            user_input
+        )
 
     operation_mode = OperationMode(arguments)
     base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
@@ -400,6 +404,8 @@ def global_analysis(arguments):
 
         # Store total time in nanoseconds;
         session.total_times.append(universe.trajectory.totaltime / 1000)
+        if operation_mode.compare_samples:
+            pass
 
         if operation_mode.compare_pairwise:
             sample = extract_slice_representation(universe)
