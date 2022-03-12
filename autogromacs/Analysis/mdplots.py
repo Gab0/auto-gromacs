@@ -59,6 +59,7 @@ def load_mode_parameters(mode: str):
         XL = "Frame"
     elif mode == "RMSF":
         XL = "Resíduo"
+        YL = r"$\Delta$ RMSF ($\AA$)"
     elif mode == "PCA":
         XL = "Componente"
         YL = "Variância Acumulada"

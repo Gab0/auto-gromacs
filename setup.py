@@ -6,10 +6,11 @@ from setuptools import setup
 
 setup(
     name='autogromacs',
-    version='0.4',
+    version='0.6',
     packages=[
         'autogromacs.core',
-        'autogromacs'
+        'autogromacs',
+        'autogromacs.Analysis'
     ],
     platforms='any',
     license="MIT",
@@ -20,7 +21,7 @@ setup(
         'console_scripts': [
             "autogromacs=autogromacs.autoGromacs:main",
             "gromacsfftester=autogromacs.forceFieldCompatTester:main",
-            "mdanalyze=autogromacs.mdanalysis:main",
+            "mdanalyze=autogromacs.Analysis.mdanalysis:main",
             "plotxvg=autogromacs.parseXVG:main",
             "mdmetrics=autogromacs.simulation_metrics:main"
         ]

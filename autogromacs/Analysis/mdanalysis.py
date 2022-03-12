@@ -11,7 +11,7 @@ import numpy as np
 import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca, psa
 
-from . import mdplots
+from . import mdplots, user_input
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -20,14 +20,25 @@ STANDARD_SELECTION = "protein and name CA"
 
 class AnalysisSession():
     """Holds what is saved from all loaded Universes for a single analysis."""
+    universes: List[mda.Universe] = []
     labels: List[str] = []
-    rmsd_series: List[np.ndarray] = []
-    rmsf_series: List[np.ndarray] = []
-    sample_rmsf: List[np.ndarray] = []
+    rmsd_series: List[List[float]] = []
+    rmsf_series: List[List[float]] = []
     pca_series: List[np.ndarray] = []
     total_times: List[int] = []
-    samples: List[mda.Universe] = []
     sasa: List[np.ndarray] = []
+
+    def update(self, universe: mda.Universe, arguments):
+
+        # Store total time in nanoseconds;
+        self.total_times.append(universe.trajectory.totaltime / 1000)
+        self.labels.append(get_label(universe))
+        self.rmsd_series.append(time_series_rmsd(universe, arguments))
+        self.rmsf_series.append(time_series_rmsf(universe))
+
+        self.pca_series.append(analyze_pca(universe))
+
+        self.sasa.append(analyze_sasa(universe))
 
 
 class SeriesMode(enum.Enum):
@@ -41,14 +52,13 @@ class OperationMode():
     which is based on the user input arguments.
     """
     compare_pairwise = True
-    compare_timeseries = True
+    compare_full_timeseries = True
     compare_samples = True
 
     def __init__(self, arguments):
         if arguments.matrix_only:
             self.compare_pairwise = True
-            self.compare_timeseries = False
-
+            self.compare_full_timeseries = False
 
 
 class AlignType(enum.Enum):
@@ -74,21 +84,71 @@ def parse_arguments():
     """Parse commandline arguments."""
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-f", dest='FilePrefix', nargs="*")
-    parser.add_argument("-d", dest='AutoDetect', nargs="*")
+    parser.add_argument(
+        "-f",
+        dest='FilePrefix',
+        nargs="*",
+        help="File prefix containing multiple GROMACS simulation directories."
+    )
+    parser.add_argument(
+        "-d",
+        dest='AutoDetect',
+        nargs="*",
+        help=""
+    )
 
-    parser.add_argument("-t", dest='TrajSuffix', default="")
-    parser.add_argument("-M", dest='matrix_only', action="store_true")
-    parser.add_argument("-T", dest='DoTimeseries', action="store_true")
+    parser.add_argument(
+        "-t",
+        dest='TrajSuffix',
+        default="",
+        help=""
+    )
 
-    parser.add_argument("-w", dest='WriteOutput', action="store_true")
-    parser.add_argument("-i", "--identifier",
-                        dest='OutputIdentifier', required=True)
+    parser.add_argument(
+        "-M",
+        dest='matrix_only',
+        action="store_true",
+        help=""
+    )
 
-    parser.add_argument('-m', dest='ReferenceMean', action="store_true")
+    parser.add_argument(
+        "-T",
+        dest='DoTimeseries',
+        action="store_true",
+        help=""
+    )
 
+    parser.add_argument(
+        "-w",
+        dest='WriteOutput',
+        action="store_true",
+        help=""
+    )
 
-    parser.add_argument('-s', dest='SimulationSelection')
+    parser.add_argument(
+        "-i",
+        "--identifier",
+        dest='OutputIdentifier',
+        required=True,
+        help="Unique identifier for the current analysis." +
+        " Will be included in all output filenames."
+    )
+
+    parser.add_argument(
+        '-m',
+        dest='ReferenceMean',
+        action="store_true",
+        help=""
+    )
+
+    parser.add_argument(
+        '-s',
+        dest='SimulationSelection',
+        help="Simulation directories to be included in the analysis." +
+        " Will be selected interactively if not specified."
+
+    )
+
     return parser.parse_args()
 
 
@@ -264,53 +324,6 @@ def load_simulation_prefixes(arguments):
     return simulation_prefixes
 
 
-def ask_simulation_prefixes(simulation_prefixes):
-    print("File prefixes found:")
-    for i, prefix in enumerate(simulation_prefixes):
-        print(f"{i + 1}:\t" + prefix)
-
-    print("Select all prefixes? (empty input)")
-    print("Or input comma separated numbers and " +
-          "dash separated intervals to select prefixes.")
-
-    return input(">")
-
-
-def select_simulation_prefixes(simulation_prefixes, input_string):
-    range_descriptors = [input_string]
-    if "," in input_string:
-        range_descriptors = [
-            v.strip()
-            for v in input_string.split(",")
-        ]
-
-    OutputPrefixes = []
-
-    if not range_descriptors:
-        return simulation_prefixes
-
-    for v in range_descriptors:
-        try:
-            if "-" in v:
-                limits = v.split("-")
-                assert len(limits) == 2
-                F, T = [int(k) for k in limits]
-                V = list(range(F, T + 1))
-            else:
-                V = [int(v)]
-
-        except (ValueError, AssertionError):
-            raise Exception("Invalid input.")
-
-        for prefix_idx in V:
-            OutputPrefixes.append(simulation_prefixes[prefix_idx - 1])
-
-    for prefix in OutputPrefixes:
-        print('\t' + prefix)
-
-    return OutputPrefixes
-
-
 def concat_filepath(specifiers: List[str]) -> str:
     return "_".join(specifiers) + ".png"
 
@@ -370,14 +383,14 @@ def global_analysis(arguments):
     simulation_prefixes = load_simulation_prefixes(arguments)
 
     if arguments.SimulationSelection:
-        user_input = arguments.SimulationSelection
+        user_selection = arguments.SimulationSelection
     else:
-        user_input = ask_simulation_prefixes(simulation_prefixes)
+        user_selection = user_input.ask_simulation_prefixes(simulation_prefixes)
 
-    if user_input != "":
-        simulation_prefixes = select_simulation_prefixes(
+    if user_selection != "":
+        simulation_prefixes = user_input.select_simulation_prefixes(
             simulation_prefixes,
-            user_input
+            user_selection
         )
 
     operation_mode = OperationMode(arguments)
@@ -387,45 +400,44 @@ def global_analysis(arguments):
 
     print("Processing timeseries RMSD plots.")
     session = AnalysisSession()
+    session05 = AnalysisSession()
     for i, simulation_prefix in enumerate(simulation_prefixes):
-        print(f"Processsing {i + 1} of {len(simulation_prefixes)}: {simulation_prefix}")
+        print(
+            f"Processsing {i + 1} of {len(simulation_prefixes)}: "
+            + f"{simulation_prefix}"
+        )
         universe = load_universe(simulation_prefix, arguments.TrajSuffix)
 
         show_universe_information(universe)
 
-        session.labels.append(get_label(universe))
-        if operation_mode.compare_timeseries:
-            session.rmsd_series.append(time_series_rmsd(universe, arguments))
-            session.rmsf_series.append(time_series_rmsf(universe))
+        sample = extract_slice_representation(universe)
+        session05.update(sample, arguments)
+        session05.universes.append(sample)
 
-            session.pca_series.append(analyze_pca(universe))
-
-            session.sasa.append(analyze_sasa(universe))
-
-        # Store total time in nanoseconds;
-        session.total_times.append(universe.trajectory.totaltime / 1000)
+        if operation_mode.compare_full_timeseries:
+            session.update(universe, arguments)
         if operation_mode.compare_samples:
             pass
 
-        if operation_mode.compare_pairwise:
-            sample = extract_slice_representation(universe)
-            session.samples.append(sample)
-            session.sample_rmsf.append(time_series_rmsf(sample))
-
+        # Close full-lenght universe to preserve RAM memory.
         universe.trajectory.close()
         del universe
 
-        if operation_mode.compare_timeseries:
-            plot_series(arguments, base_filepath, session, SeriesMode.STACKED)
-            plot_series(arguments, base_filepath, session, SeriesMode.MONOLITHIC)
+    if operation_mode.compare_full_timeseries:
+        plot_series(arguments, base_filepath, session, series_mode=SeriesMode.STACKED)
+        plot_series(arguments, base_filepath, session, series_mode=SeriesMode.MONOLITHIC)
 
-        if operation_mode.compare_pairwise:
-            plot_rmsd_matrices(arguments, base_filepath, session)
+    plot_series(arguments, base_filepath, session05, ["short-sample"], series_mode=SeriesMode.STACKED)
+    plot_series(arguments, base_filepath, session05, ["short-sample"], series_mode=SeriesMode.MONOLITHIC)
+
+    if operation_mode.compare_pairwise:
+        plot_rmsd_matrices(arguments, base_filepath, session)
+
 
 
 def plot_rmsd_matrices(arguments, base_filepath, session):
-    selection_frames = list(map(extract_slice_representation, session.samples))
-    rmsd_matrix = pairwise_rmsds(selection_frames)
+
+    rmsd_matrix = pairwise_rmsds(session.universes)
 
     print(rmsd_matrix)
     mdplots.show_matrix(
@@ -434,7 +446,7 @@ def plot_rmsd_matrices(arguments, base_filepath, session):
         build_filepath(base_filepath, ["pairwise", "rmsds"], arguments)
     )
 
-    rmsd_matrix_traj = pairwise_rmsds_traj(session.samples, session.labels)
+    rmsd_matrix_traj = pairwise_rmsds_traj(session.universes, session.labels)
     mdplots.show_matrix(
         rmsd_matrix_traj,
         session.labels,
@@ -442,7 +454,12 @@ def plot_rmsd_matrices(arguments, base_filepath, session):
     )
 
 
-def plot_series(arguments, base_filepath, session, series_mode=SeriesMode.MONOLITHIC):
+def plot_series(
+        arguments,
+        base_filepath,
+        session,
+        extra_identifier=[],
+        series_mode=SeriesMode.MONOLITHIC):
     series_qualifiers = {
         SeriesMode.MONOLITHIC: {
             "name_appendix": ["mono"],
@@ -461,11 +478,13 @@ def plot_series(arguments, base_filepath, session, series_mode=SeriesMode.MONOLI
             data,
             session.labels,
             session.total_times,
-            build_filepath(base_filepath, name_segments + Q["name_appendix"], arguments),
+            build_filepath(
+                base_filepath,
+                name_segments + Q["name_appendix"] + extra_identifier,
+                arguments),
             mode
         )
 
-    plot(Q, session.sample_rmsf, ["ts", "rmsf", "short_sample"], "RMSF")
     plot(Q, session.rmsd_series, ["ts", "rmsd"], "RMSDt")
     plot(Q, session.rmsf_series, ["ts", "rmsf"], "RMSF")
     plot(Q, session.pca_series, ["ts", "variance"], "PCA")
