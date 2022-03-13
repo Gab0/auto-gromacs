@@ -12,15 +12,38 @@ plt.rcParams["axes.labelsize"] = 15
 plt.rcParams["figure.dpi"] = 700
 
 
-def _(x, _):
+def _(_1, x, _2):
     return x
 
 
 class ModeParameters():
     x_label = ""
     y_label = r"$\Delta$ RMSD ($\AA$)"
-    enforce_ticks = False
+    enforce_ticks = True
     make_x = _
+
+    def __init__(self, mode: str):
+
+        if mode == "RMSDt":
+            self.x_label = "Tempo (ns)"
+            self.make_x = self.to_time_x
+        elif mode == "RMSDf":
+            self.x_label = "Frame"
+        elif mode == "RMSF":
+            self.x_label = "Resíduo"
+            self.y_label = r"$\Delta$ RMSF ($\AA$)"
+        elif mode == "PCA":
+            self.x_label = "Componente"
+            self.y_label = "Variância Acumulada"
+        elif mode == "SASA":
+            self.x_label = "Frame"
+            self.y_label = r"SASA ($\AA$²)"
+            self.enforce_ticks = False
+        else:
+            raise Exception("Unknown plot identifier.")
+
+    def to_time_x(self, X, t):
+        return frames_to_time(X, t)
 
 
 def show_matrix(results, labels, filepath: Union[str, None]):
@@ -44,33 +67,7 @@ def show_matrix(results, labels, filepath: Union[str, None]):
     execute_output_plot(filepath)
 
 
-def load_mode_parameters(mode: str):
 
-    def to_time_x(X, t):
-        return frames_to_time(X, t)
-
-    YL = r"$\Delta$ RMSD ($\AA$)"
-    enforce_ticks = True
-    make_x = _
-    if mode == "RMSDt":
-        XL = "Tempo (ns)"
-        make_x = to_time_x
-    elif mode == "RMSDf":
-        XL = "Frame"
-    elif mode == "RMSF":
-        XL = "Resíduo"
-        YL = r"$\Delta$ RMSF ($\AA$)"
-    elif mode == "PCA":
-        XL = "Componente"
-        YL = "Variância Acumulada"
-    elif mode == "SASA":
-        XL = "Frame"
-        YL = "SASA ($\AA$²)"
-        enforce_ticks = False
-    else:
-        raise Exception("Unknown plot identifier.")
-
-    return (XL, YL, make_x, enforce_ticks)
 
 
 def show_rms_series_monolithic(
@@ -84,14 +81,20 @@ def show_rms_series_monolithic(
 
     fig.set_figwidth(9.6)
 
-    XL, YL, make_x, enforce_ticks = load_mode_parameters(mode)
+    mode_parameters = ModeParameters(mode)
+
+    values = np.array(rms_series)
+    if values.ndim > 2:
+        print(f"Incompatible data to plot for {filepath}.")
+        return
 
     for i, Xa in enumerate(rms_series):
-        ax.plot(make_x(range(len(Xa)), total_times[i]), Xa)
+        x = mode_parameters.make_x(range(len(Xa)), total_times[i])
+        ax.plot(x, Xa)
 
     # ax.set_title(mode)
-    ax.set_xlabel(XL)
-    ax.set_ylabel(YL)
+    ax.set_xlabel(mode_parameters.x_label)
+    ax.set_ylabel(mode_parameters.y_label)
 
     ax.legend(labels)
     plt.tight_layout()
@@ -172,9 +175,9 @@ def show_rms_series_stacked(
     stacked_fn = [plot_bar, plot_line]
     for i, (Y, label) in enumerate(zip(rms_series, labels)):
 
-        XL, YL, make_x, enforce_ticks = load_mode_parameters(mode)
+        mode_parameters = ModeParameters(mode)
 
-        X: Union[List[float], List[int]] = make_x(
+        X: Union[List[float], List[int]] = mode_parameters.make_x(
             list(range(N)),
             total_times[i]
         )
@@ -199,13 +202,13 @@ def show_rms_series_stacked(
                     assert len(X) == len(sY)
                     raise(e)
 
-                if enforce_ticks:
+                if mode_parameters.enforce_ticks:
                     enforce_ax_ticks(cax, round(max(sY)), round(max(sY)))
                 INITIALIZED = True
 
         elif Values.ndim == 2:
             axk[i].plot(X, Y, "-", color="black")
-            if enforce_ticks:
+            if mode_parameters.enforce_ticks:
                 enforce_ax_ticks(axk[i], Y_MAX, 5)
         else:
             print(f"{Values.ndim}")
@@ -224,8 +227,8 @@ def show_rms_series_stacked(
     # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
 
     hide_ax_ticks(ax)
-    ax.set_xlabel(XL)
-    ax.set_ylabel(YL)
+    ax.set_xlabel(mode_parameters.x_label)
+    ax.set_ylabel(mode_parameters.y_label)
 
     plt.subplots_adjust(hspace=0.05)
 

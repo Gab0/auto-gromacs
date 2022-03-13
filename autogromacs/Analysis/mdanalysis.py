@@ -20,15 +20,33 @@ STANDARD_SELECTION = "protein and name CA"
 
 class AnalysisSession():
     """Holds what is saved from all loaded Universes for a single analysis."""
-    universes: List[mda.Universe] = []
-    labels: List[str] = []
-    rmsd_series: List[List[float]] = []
-    rmsf_series: List[List[float]] = []
-    pca_series: List[np.ndarray] = []
-    total_times: List[int] = []
-    sasa: List[np.ndarray] = []
+    store_universe: bool = False
+
+    universes: List[mda.Universe]
+    labels: List[str]
+    rmsd_series: List[List[float]]
+    rmsf_series: List[List[float]]
+    pca_series: List[np.ndarray]
+    total_times: List[int]
+    sasa: List[np.ndarray]
+
+    def __init__(self, store_universe):
+        self.store_universe = store_universe
+
+        self.universes = []
+        self.labels = []
+        self.rmsd_series = []
+        self.rmsf_series = []
+        self.pca_series = []
+        self.total_times = []
+        self.sasa = []
 
     def update(self, universe: mda.Universe, arguments):
+        """Add analysis for a single Universe into this session."""
+
+        print(f"Updating. {self.store_universe}")
+        if self.store_universe:
+            self.universes.append(universe)
 
         # Store total time in nanoseconds;
         self.total_times.append(universe.trajectory.totaltime / 1000)
@@ -40,8 +58,15 @@ class AnalysisSession():
 
         self.sasa.append(analyze_sasa(universe))
 
+    def check(self):
+        """Some checks for session integrity."""
+        for key, value in self.__dict__.items():
+            if isinstance(value, list):
+                print(len(value))
+
 
 class SeriesMode(enum.Enum):
+    """Different types of series visualisation."""
     MONOLITHIC = 0
     STACKED = 1
 
@@ -57,7 +82,6 @@ class OperationMode():
 
     def __init__(self, arguments):
         if arguments.matrix_only:
-            self.compare_pairwise = True
             self.compare_full_timeseries = False
 
 
@@ -399,27 +423,29 @@ def global_analysis(arguments):
     print("Data loading done.")
 
     print("Processing timeseries RMSD plots.")
-    session = AnalysisSession()
-    session05 = AnalysisSession()
+
+    session = AnalysisSession(False)
+    session05 = AnalysisSession(True)
+
     for i, simulation_prefix in enumerate(simulation_prefixes):
         print(
             f"Processsing {i + 1} of {len(simulation_prefixes)}: "
             + f"{simulation_prefix}"
         )
+
         universe = load_universe(simulation_prefix, arguments.TrajSuffix)
 
         show_universe_information(universe)
-
-        sample = extract_slice_representation(universe)
-        session05.update(sample, arguments)
-        session05.universes.append(sample)
 
         if operation_mode.compare_full_timeseries:
             session.update(universe, arguments)
         if operation_mode.compare_samples:
             pass
 
-        # Close full-lenght universe to preserve RAM memory.
+        sample = extract_slice_representation(universe)
+        session05.update(sample, arguments)
+
+        # Close full-length universe to preserve RAM memory.
         universe.trajectory.close()
         del universe
 
@@ -431,7 +457,7 @@ def global_analysis(arguments):
     plot_series(arguments, base_filepath, session05, ["short-sample"], series_mode=SeriesMode.MONOLITHIC)
 
     if operation_mode.compare_pairwise:
-        plot_rmsd_matrices(arguments, base_filepath, session)
+        plot_rmsd_matrices(arguments, base_filepath, session05)
 
 
 
@@ -544,14 +570,14 @@ def time_series_rmsd(universe: mda.Universe, arguments, verbose=False) -> List[f
     """Extracts the timeseries RMSD from a Universe."""
     rmsds = []
 
-    J = len(universe.trajectory)
+    total_length = len(universe.trajectory)
     atoms = universe.select_atoms(STANDARD_SELECTION)
 
     u = align_universe(universe, AlignType.FIRST_FRAME)
     ref = AlignType.FIRST_FRAME.extract(extract_positions(u)).reshape(-1, 3)
-    for t, traj in enumerate(u.trajectory):
+    for frame_idx, _ in enumerate(u.trajectory):
         if verbose:
-            print(f"{t} of {J}")
+            print(f"{frame_idx} of {total_length}")
 
         frame_rmsd = rms.rmsd(ref, atoms.positions)
         rmsds.append(frame_rmsd)
@@ -572,8 +598,8 @@ def time_series_rmsf(u, sel=STANDARD_SELECTION) -> List[float]:
 
 def analyze_pca(u: mda.Universe, n_dimensions=40):
     """Fetch PCA component contribution values for a single trajectory."""
-    PCA = pca.PCA(u, select='backbone')
-    space = PCA.run()
+    pca_analysis = pca.PCA(u, select='backbone')
+    space = pca_analysis.run()
 
     space_3 = space.transform(u.select_atoms('backbone'), 3)
     w = pca.cosine_content(space_3, 0)
@@ -586,6 +612,7 @@ def analyze_pca(u: mda.Universe, n_dimensions=40):
 
 
 def get_radius(atom):
+    """Get atom radii."""
     radii = {
         "H": 1.1,  # Hydrogen
         "N": 1.6,  # Nitrogen
@@ -598,7 +625,7 @@ def get_radius(atom):
         if symbol in atom.name:
             return radius
 
-    return 0
+    raise Exception("Unknown ATOM {atom.name}.")
 
 
 def analyze_sasa(u: mda.Universe):
