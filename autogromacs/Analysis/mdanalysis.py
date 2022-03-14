@@ -21,6 +21,8 @@ STANDARD_SELECTION = "protein and name CA"
 class AnalysisSession():
     """Holds what is saved from all loaded Universes for a single analysis."""
     store_universe: bool = False
+    plot_suffix: List[str]
+    sample_pct: Optional[Tuple[float, float]] = None
 
     universes: List[mda.Universe]
     labels: List[str]
@@ -30,8 +32,10 @@ class AnalysisSession():
     total_times: List[int]
     sasa: List[np.ndarray]
 
-    def __init__(self, store_universe):
+    def __init__(self, store_universe, plot_suffix, sample_pct):
         self.store_universe = store_universe
+        self.plot_suffix = plot_suffix
+        self.sample_pct = sample_pct
 
         self.universes = []
         self.labels = []
@@ -45,8 +49,13 @@ class AnalysisSession():
         """Add analysis for a single Universe into this session."""
 
         print(f"Updating. {self.store_universe}")
+
+        if self.sample_pct is not None:
+            universe = extract_slice_representation(universe, self.sample_pct)
+
         if self.store_universe:
             self.universes.append(universe)
+
 
         # Store total time in nanoseconds;
         self.total_times.append(universe.trajectory.totaltime / 1000)
@@ -63,6 +72,17 @@ class AnalysisSession():
         for key, value in self.__dict__.items():
             if isinstance(value, list):
                 print(len(value))
+
+    def check_stable(self) -> bool:
+        """Checks if all stored trajectory fragments are stable."""
+        stable = True
+        for label, rmsd_traj in zip(self.labels, self.rmsd_series):
+            k = [max(rmsd_traj), min(rmsd_traj)]
+            if abs(k[0] - k[1]) > 5:
+                print(f"Unstable trajectory for {label}.")
+                stable = False
+
+        return stable
 
 
 class SeriesMode(enum.Enum):
@@ -424,8 +444,14 @@ def global_analysis(arguments):
 
     print("Processing timeseries RMSD plots.")
 
-    session = AnalysisSession(False)
-    session05 = AnalysisSession(True)
+    sessions = [
+        AnalysisSession(True, ["short-sample-080"], (0.8, 0.85)),
+        AnalysisSession(True, ["short-sample-085"], (0.85, 0.9)),
+        AnalysisSession(True, ["short-sample-090"], (0.9, 0.95))
+    ]
+
+    if operation_mode.compare_full_timeseries:
+        sessions += [AnalysisSession(False, [], None)]
 
     for i, simulation_prefix in enumerate(simulation_prefixes):
         print(
@@ -437,27 +463,33 @@ def global_analysis(arguments):
 
         show_universe_information(universe)
 
-        if operation_mode.compare_full_timeseries:
+        for session in sessions:
             session.update(universe, arguments)
-        if operation_mode.compare_samples:
-            pass
-
-        sample = extract_slice_representation(universe)
-        session05.update(sample, arguments)
 
         # Close full-length universe to preserve RAM memory.
         universe.trajectory.close()
         del universe
 
-    if operation_mode.compare_full_timeseries:
-        plot_series(arguments, base_filepath, session, series_mode=SeriesMode.STACKED)
-        plot_series(arguments, base_filepath, session, series_mode=SeriesMode.MONOLITHIC)
+    for session in sessions:
+        session.check_stable()
+        plot_series(
+            arguments,
+            base_filepath,
+            session,
+            session.plot_suffix,
+            series_mode=SeriesMode.STACKED
+        )
+        plot_series(
+            arguments,
+            base_filepath,
+            session,
+            session.plot_suffix,
+            series_mode=SeriesMode.MONOLITHIC
+        )
 
-    plot_series(arguments, base_filepath, session05, ["short-sample"], series_mode=SeriesMode.STACKED)
-    plot_series(arguments, base_filepath, session05, ["short-sample"], series_mode=SeriesMode.MONOLITHIC)
-
-    if operation_mode.compare_pairwise:
-        plot_rmsd_matrices(arguments, base_filepath, session05)
+        if operation_mode.compare_pairwise:
+            if session.universes:
+                plot_rmsd_matrices(arguments, base_filepath, session)
 
 
 
@@ -519,16 +551,17 @@ def plot_series(
 
 def extract_slice_representation(
         u: mda.Universe,
-        slice_position: Optional[Tuple[int, int]] = None
+        slice_position_pct: Tuple[float, float] = (0.85, 0.9)
 ) -> mda.Universe:
     trajectory_length = len(u.trajectory)
 
     def convert_to_frame(pct, L):
         return int(pct * L)
 
+    pct_start, pct_end = slice_position_pct
     slice_position = (
-        convert_to_frame(0.85, trajectory_length),
-        convert_to_frame(0.9, trajectory_length)
+        convert_to_frame(pct_start, trajectory_length),
+        convert_to_frame(pct_end, trajectory_length)
     )
 
     new_u = mda.Universe(u.filename, u.trajectory.filename)
