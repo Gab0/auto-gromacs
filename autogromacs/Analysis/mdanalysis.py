@@ -11,7 +11,7 @@ import numpy as np
 import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca, psa
 
-from . import mdplots, user_input
+from . import mdplots, user_input, crosscorr
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -55,7 +55,6 @@ class AnalysisSession():
 
         if self.store_universe:
             self.universes.append(universe)
-
 
         # Store total time in nanoseconds;
         self.total_times.append(universe.trajectory.totaltime / 1000)
@@ -491,6 +490,11 @@ def global_analysis(arguments):
             if session.universes:
                 plot_rmsd_matrices(arguments, base_filepath, session)
 
+        for universe, label in zip(session.universes, session.labels):
+            crosscorr.trajectory_cross_correlation(
+                universe,
+                build_filepath(base_filepath, ["cross-corr", label], arguments)
+            )
 
 
 def plot_rmsd_matrices(arguments, base_filepath, session):
