@@ -268,20 +268,42 @@ def process_simulation_name(name: str) -> str:
     readable names for labels etc...
     """
 
-    number = re.findall(r"\d+-{0,1}\d*", name)
+    # Parse single mutation name patterns.
+    mutation_pat = re.findall(r"mutation_(\w\d+\w)", name)
 
-    if number:
-        number = number[0]
-        if number == "0":
-            return "Original"
+    if mutation_pat:
+        mutation = mutation_pat[0]
+        return f"Mutação {mutation}"
 
-        return f"Variação #{number}"
+    # Parse variation name patterns.
+    number_pat = re.findall(r"\d+-{0,1}\d*", name)
+    identifier_pat = re.findall(r"^[^\d]+", name)
 
-    return name
+    if number_pat:
+        number = number_pat[0]
+    else:
+        number = ""
+
+    if identifier_pat:
+        identifier_map = {
+            "DUMMY": "Artificial",
+            "NAT": "Natural",
+            "mutate": "Natural",
+        }
+        identifier = identifier_map[identifier_pat[0]]
+
+    else:
+        return name
+
+    if number == "0":
+        return "Original"
+
+    return " ".join([identifier, number])
 
 
-def extract_positions(u: mda.Universe, sel=STANDARD_SELECTION):
-    return u.trajectory.timeseries(asel=u.select_atoms(sel))
+def extract_positions(universe: mda.Universe, sel=STANDARD_SELECTION):
+    """ Extract trajectory atomic position vectors from a Universe."""
+    return universe.trajectory.timeseries(asel=universe.select_atoms(sel))
 
 
 def pairwise_rmsds(universes: List[mda.Universe]):
