@@ -2,3 +2,4 @@ MDAnalysis
 seaborn
 freesasa
 correlationplus
+umap-learn
