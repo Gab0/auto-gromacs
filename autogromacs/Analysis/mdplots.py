@@ -67,9 +67,6 @@ def show_matrix(results, labels, filepath: Union[str, None]):
     execute_output_plot(filepath)
 
 
-
-
-
 def show_rms_series_monolithic(
         rms_series: List[List[float]],
         labels: List[str],

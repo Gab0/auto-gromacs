@@ -8,10 +8,12 @@ import warnings
 import freesasa
 import numpy as np
 
+from sklearn.preprocessing import normalize
+
 import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca, psa
 
-from . import mdplots, user_input, crosscorr
+from . import mdplots, user_input, crosscorr, dimension_reduction
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -52,6 +54,8 @@ class AnalysisSession():
 
         if self.sample_pct is not None:
             universe = extract_slice_representation(universe, self.sample_pct)
+        elif self.sample_pct == (1.0, 1.0):
+            universe = get_best_stable_window(universe)
 
         if self.store_universe:
             self.universes.append(universe)
@@ -289,8 +293,10 @@ def process_simulation_name(name: str) -> str:
             "DUMMY": "Artificial",
             "NAT": "Natural",
             "mutate": "Natural",
+            "mutation": "Natural",
         }
-        identifier = identifier_map[identifier_pat[0]]
+        identifier_code = identifier_pat[0].split("_")[-1]
+        identifier = identifier_map[identifier_code]
 
     else:
         return name
@@ -371,6 +377,10 @@ def pairwise_rmsds_traj(universes: List[mda.Universe], labels: List[str]):
     ps.generate_paths(align=False, save=False, weights='mass')
     ps.run(metric='hausdorff')
     return ps.D
+
+
+def normalize_rmsf(rmsf_series):
+    return normalize(rmsf_series, axis=1, norm='max')
 
 
 def load_simulation_prefixes(arguments):
@@ -468,7 +478,8 @@ def global_analysis(arguments):
     sessions = [
         AnalysisSession(True, ["short-sample-080"], (0.8, 0.85)),
         AnalysisSession(True, ["short-sample-085"], (0.85, 0.9)),
-        AnalysisSession(True, ["short-sample-090"], (0.9, 0.95))
+        AnalysisSession(True, ["short-sample-090"], (0.9, 0.95)),
+        #AnalysisSession(True, ["short-sample-best"], (1.0, 1.0))
     ]
 
     if operation_mode.compare_full_timeseries:
@@ -493,6 +504,7 @@ def global_analysis(arguments):
 
     for session in sessions:
         session.check_stable()
+
         plot_series(
             arguments,
             base_filepath,
@@ -500,12 +512,22 @@ def global_analysis(arguments):
             session.plot_suffix,
             series_mode=SeriesMode.STACKED
         )
+
         plot_series(
             arguments,
             base_filepath,
             session,
             session.plot_suffix,
             series_mode=SeriesMode.MONOLITHIC
+        )
+
+        rmsf_norm = normalize_rmsf(session.rmsf_series)
+
+        rmsf_2d = dimension_reduction.tsne_reduce(rmsf_norm)
+        dimension_reduction.plot_2D(
+            rmsf_2d,
+            session.labels,
+            build_filepath(base_filepath, ["umap-rmsf"] + session.plot_suffix, arguments)
         )
 
         if operation_mode.compare_pairwise:
@@ -527,14 +549,22 @@ def plot_rmsd_matrices(arguments, base_filepath, session):
     mdplots.show_matrix(
         rmsd_matrix,
         session.labels,
-        build_filepath(base_filepath, ["pairwise", "rmsds"], arguments)
+        build_filepath(
+            base_filepath,
+            ["pairwise", "rmsds"] + session.plot_suffix,
+            arguments
+        )
     )
 
     rmsd_matrix_traj = pairwise_rmsds_traj(session.universes, session.labels)
     mdplots.show_matrix(
         rmsd_matrix_traj,
         session.labels,
-        build_filepath(base_filepath, ["pairwise", "rmsds", "traj"], arguments)
+        build_filepath(
+            base_filepath,
+            ["pairwise", "rmsds", "traj"] + session.plot_suffix,
+            arguments
+        )
     )
 
 
@@ -544,6 +574,7 @@ def plot_series(
         session,
         extra_identifier=[],
         series_mode=SeriesMode.MONOLITHIC):
+
     series_qualifiers = {
         SeriesMode.MONOLITHIC: {
             "name_appendix": ["mono"],
@@ -558,16 +589,19 @@ def plot_series(
     Q = series_qualifiers[series_mode]
 
     def plot(Q, data, name_segments, mode):
-        Q["function"](
-            data,
-            session.labels,
-            session.total_times,
-            build_filepath(
-                base_filepath,
-                name_segments + Q["name_appendix"] + extra_identifier,
-                arguments),
-            mode
-        )
+        try:
+            Q["function"](
+                data,
+                session.labels,
+                session.total_times,
+                build_filepath(
+                    base_filepath,
+                    name_segments + Q["name_appendix"] + extra_identifier,
+                    arguments),
+                mode
+            )
+        except ValueError:
+            print(f"Could not create {mode} plots for {extra_identifier}.")
 
     plot(Q, session.rmsd_series, ["ts", "rmsd"], "RMSDt")
     plot(Q, session.rmsf_series, ["ts", "rmsf"], "RMSF")
@@ -670,7 +704,7 @@ def analyze_pca(u: mda.Universe, n_dimensions=40):
     ]
 
 
-def get_radius(atom):
+def get_atom_radius(atom):
     """Get atom radii."""
     radii = {
         "H": 1.1,  # Hydrogen
@@ -692,12 +726,32 @@ def analyze_sasa(u: mda.Universe):
     positions = u.trajectory.timeseries(asel=atoms)
 
     trajectory_sasa = []
-    atom_radius = list(map(get_radius, atoms))
+    atom_radius = list(map(get_atom_radius, atoms))
     for frame in np.swapaxes(positions, 0, 1):
         sasa = freesasa.calcCoord(frame.reshape(-1), atom_radius).totalArea()
         trajectory_sasa.append(sasa)
 
     return np.array(trajectory_sasa)
+
+
+def get_best_stable_window(
+        universe: mda.Universe,
+        starting_point: float = 0.7,
+        window_size: float = 0.05) -> mda.Universe:
+    """Get the most stable window based on RMSD from an Universe."""
+    window_frames = ((s, s + window_size) for s in np.arange(starting_point, 1 - window_size, 0.1))
+    frames = []
+    delta_rmsds = []
+
+    def evaluate_rmsd(rmsd):
+        return np.abs(np.min(rmsd) - np.max(rmsd))
+
+    for frame_bounds in window_frames:
+        frame = extract_slice_representation(universe, frame_bounds)
+        frames.append(frame)
+        delta_rmsds.append(evaluate_rmsd(time_series_rmsd(universe, frame)))
+
+    return frames[delta_rmsds.index(min(delta_rmsds))]
 
 
 def main():
