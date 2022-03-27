@@ -294,9 +294,13 @@ def process_simulation_name(name: str) -> str:
             "NAT": "Natural",
             "mutate": "Natural",
             "mutation": "Natural",
+            "MUTATE": "Natural"
         }
         identifier_code = identifier_pat[0].split("_")[-1]
-        identifier = identifier_map[identifier_code]
+        try:
+            identifier = identifier_map[identifier_code]
+        except KeyError:
+            identifier = "Desconhecido"
 
     else:
         return name
