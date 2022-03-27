@@ -6,7 +6,6 @@ from MDAnalysis.analysis.dihedrals import Ramachandran
 
 from sklearn.manifold import TSNE
 
-from autogromacs import mdanalysis as agmda
 import matplotlib.pyplot as plt
 import seaborn as sns
 
