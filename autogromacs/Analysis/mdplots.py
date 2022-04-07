@@ -7,9 +7,18 @@ import matplotlib.units as munits
 import numpy as np
 import pandas as pd
 
-sns.set_theme(style="darkgrid")
-plt.rcParams["axes.labelsize"] = 15
-plt.rcParams["figure.dpi"] = 700
+
+def seaborn_theme():
+    sns.set_theme(
+        style="darkgrid",
+        rc={
+            'axes.facecolor': '#F2F2F2',
+            'figure.facecolor': 'white'
+        }
+    )
+
+    plt.rcParams["axes.labelsize"] = 15
+    plt.rcParams["figure.dpi"] = 700
 
 
 def _(_1, x, _2):
@@ -263,3 +272,6 @@ def write_series(
 
 def data_sanity(rms_values):
     pass
+
+
+seaborn_theme()
