@@ -11,7 +11,6 @@ import subprocess
 import datetime
 import pathlib
 import itertools
-import scipy.constants
 
 from .core.messages import welcome_message
 from .core import settings
