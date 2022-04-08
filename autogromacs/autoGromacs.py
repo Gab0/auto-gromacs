@@ -1140,7 +1140,7 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "--salt_concentration",
+        "--salt-concentration",
         type=float,
         default=0.0,
         help="Additional solute concentration in M."
