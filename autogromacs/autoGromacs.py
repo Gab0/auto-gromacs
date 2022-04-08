@@ -11,6 +11,7 @@ import subprocess
 import datetime
 import pathlib
 import itertools
+import scipy.constants
 
 from .core.messages import welcome_message
 from .core import settings
@@ -99,6 +100,7 @@ class GromacsExecutables():
     """ List GROMACS' 'executables'. """
     gmx_commands = [
         "pdb2gmx",
+        "solvate",
         "mdrun",
         "covar",
         "grompp",
@@ -401,31 +403,33 @@ class GromacsSimulation(object):
         genbox = settings.g_prefix + "genbox"
         step_no = "4"
         step_name = "Solvating the Box"
+
+        solvent_file = "spc216.gro"
+
         command = [
             genbox,
             "-cp", self.to_wd("newbox.gro"),
-            "-p ", self.to_wd("topol.top"),
-            "-cs spc216.gro -o ",
-            self.to_wd("solv.gro")
-        ]
-
-        if self.run_process(step_no, step_name, command):
-            return 1
-
-        command = [
-            "gmx solvate -cp " + self.to_wd("newbox.gro"),
             "-p", self.to_wd("topol.top"),
-            "-cs spc216.gro",
             "-o", self.to_wd("solv.gro")
         ]
 
-        return self.run_process(step_no, step_name, command)
+        if self.run_process(step_no, step_name, " ".join(command)):
+            return 1
+
+        command = [
+            self.gromacs.solvate,
+            "-cp", self.to_wd("newbox.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-cs", solvent_file,
+            "-o", self.to_wd("solv.gro")
+        ]
+
+        return self.run_process(step_no, step_name, " ".join(command))
 
     def add_ions(self, arguments):
         print(">STEP5 : Initiating Procedure to Add Ions & Neutralise the "
               "Complex")
 
-        # TODO: Better name. Whats this?
         step_no = "5"
         step_name = "Check Ions "
 
@@ -440,76 +444,25 @@ class GromacsSimulation(object):
             "-p", self.to_wd("topol.top"),
             "-o", self.to_wd("ions.tpr"),
             "-po", self.to_wd("mdout.mdp"),
-            "-maxwarn", self.maxwarn,
-            ">", log_file,
-            "2>&1"
+            "-maxwarn", self.maxwarn
         ]
         command = " ".join(command)
         self.run_process(step_no, step_name, command, log_file)
 
-        # calculating the charge of the system
-        # TODO: What is this doing? word??? Better name!
-        word = 'total'  # Your word
-        charge = 0
-        with open(self.path_log(step_no), encoding="utf8") as f:
-            for line in f:
-                if word in line:
-                    s_line = line.strip().split()
-                    two_words = (s_line[s_line.index(word) + 1],
-                                 s_line[s_line.index(word) + 2])
-                    charge = two_words[1]
-                    break
+        step_no = "6"
+        step_name = "Neutralizing the complex"
+        command = [
+            self.gromacs.genion,
+            "-s", self.to_wd("ions.tpr"),
+            "-o", self.to_wd("solv_ions.gro"),
+            "-p", self.to_wd("topol.top"),
+            "-neutral",
+            "-conc", str(arguments.salt_concentration),
+            "-nname", arguments.nname,
+            "-pname", arguments.pname
+        ]
 
-        # TODO: This charge varibale might break the code
-        print("Charge of the system is %s " % charge)
-        charge = float(charge)
-        charge = round(charge)
-
-        # TODO: REWORK THIS
-        if charge >= 0:
-            print("System has positive charge .")
-            print(f"Adding {charge} {arguments.nname} ions to Neutralize the system")
-            genion = settings.g_prefix + "genion"
-            step_no = "6"
-            step_name = "Adding Negative Ions "
-            command = [
-                genion,
-                "-s", self.to_wd("ions.tpr"),
-                "-o", self.to_wd("solv_ions.gro"),
-                "-p", self.to_wd("topol.top"),
-                f"-nname {arguments.nname} -nn " + str(charge) + " >>",
-                self.path_log(step_no),
-                "2>&1", "<< EOF\nSOL\nEOF"
-            ]
-
-            self.run_process(step_no, step_name, command)
-
-        elif charge < 0:
-            print("charge is negative")
-            print(f"Adding {-charge} {arguments.pname} ions to Neutralize the system")
-            genion = settings.g_prefix + "genion"
-            step_no = "6"
-            step_name = "Adding Positive Ions "
-            command = [
-                genion,
-                "-s", self.to_wd("ions.tpr"),
-                "-o", self.to_wd("solv_ions.gro"),
-                "-p", self.to_wd("topol.top"),
-                "-pname", arguments.pname,
-                "-np", str(-charge),
-                "<< EOF\nSOL\nEOF"
-            ]
-            self.run_process(step_no, step_name, command)
-
-        elif charge == 0:
-            print("System has Neutral charge , No adjustments Required :)")
-            try:
-                shutil.copy(
-                    self.to_wd('ions.tpr'),
-                    self.to_wd("solv_ions.tpr")
-                )
-            except FileNotFoundError:
-                pass
+        self.run_process(step_no, step_name, " ".join(command), stdin_input="13")
 
         print("DOUBLE CHEERS: SUCCESSFULLY PREPARED SYSTEM FOR SIMULATION")
 
@@ -802,7 +755,7 @@ class GromacsSimulation(object):
             self.path_log(step_no)
         )
 
-    def do_anaeig(self, step_no, EGVEC, EGVAL, vecs: Tuple[int, int], output_file):
+    def do_anaeig(self, step_no, egvec, egval, vecs: Tuple[int, int], output_file):
         """ Execute eigenvector analysis using 'gmx anaeig'. """
         svecs = [str(v) for v in vecs]
 
@@ -810,8 +763,8 @@ class GromacsSimulation(object):
             self.gromacs.anaeig,
             "-s", self.to_wd("md.gro"),
             "-f", self.to_wd(self.downsample_prefix + ".trr"),
-            "-v", EGVEC,
-            "-eig", EGVAL,
+            "-v", egvec,
+            "-eig", egval,
             "-extr", output_file,
             "-first", svecs[0],
             "-last", svecs[1],
@@ -890,6 +843,28 @@ class GromacsSimulation(object):
             command,
             self.path_log(step_no)
         )
+
+
+def calculate_solute_nmol(solvent_nmol: int, molar_concentration: float) -> int:
+    mol_mass = {
+        "NaCl": 58.443,
+        "H20": 18.01528
+    }
+
+    # solvent_vol = solvent_nmol * 2.989 * 10e-26
+    # solute_nmol = molar_concentration * scipy.constants.Avogadro * solvent_vol
+
+    solute_nmol = 0.0187 * molar_concentration * solvent_nmol
+
+
+    return round(solute_nmol)
+
+
+def read_solvent_nmol(topology_path: str) -> int:
+    with open(topology_path, encoding="utf8") as f:
+        content = f.read()
+        number = re.findall(r"SOL +(\d+)", content)
+        return int(number[0])
 
 
 def fix_pme_ranks(command):
@@ -1155,7 +1130,7 @@ def parse_arguments():
 
     parser.add_argument(
         "--nname",
-        default="CLA",
+        default="CL",
         help="The identifier of the negative ion."
     )
 
@@ -1163,6 +1138,14 @@ def parse_arguments():
         "--pname",
         default="NA",
         help="The identifier of the positive ion."
+    )
+
+    parser.add_argument(
+        "--salt_concentration",
+        type=float,
+        default=0.0,
+        help="Additional solute concentration in M."
+
     )
 
     mdp_control.add_option_override(parser, "MD", "dt")
