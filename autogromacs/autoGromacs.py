@@ -855,7 +855,6 @@ def calculate_solute_nmol(solvent_nmol: int, molar_concentration: float) -> int:
 
     solute_nmol = 0.0187 * molar_concentration * solvent_nmol
 
-
     return round(solute_nmol)
 
 
