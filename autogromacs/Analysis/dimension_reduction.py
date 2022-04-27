@@ -22,7 +22,6 @@ def plot_2D(values, labels, output_filepath):
     )
 
     for i, label in enumerate(labels):
-        V = 0.5
         p1.text(
             *values[i],
             label,
@@ -46,9 +45,11 @@ def umap_reduce(data):
     reducer = umap.UMAP()
     return reducer.fit_transform(data)
 
+
 def tsne_reduce(data):
     tsne = TSNE(n_components=2, random_state=0)
     return tsne.fit_transform(data)
+
 
 Reduce = tsne_reduce
 
