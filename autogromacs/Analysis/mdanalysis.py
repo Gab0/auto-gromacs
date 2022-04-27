@@ -15,6 +15,7 @@ from MDAnalysis.analysis import align, rms, pca, psa
 
 from . import mdplots, user_input, crosscorr, dimension_reduction
 
+from auto_antigen.Mutation import structure_name
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 STANDARD_SELECTION = "protein and name CA"
@@ -104,8 +105,8 @@ class OperationMode():
     compare_samples = True
 
     def __init__(self, arguments):
-        if arguments.matrix_only:
-            self.compare_full_timeseries = False
+
+        self.compare_full_timeseries = not arguments.matrix_only
 
 
 class AlignType(enum.Enum):
@@ -263,52 +264,9 @@ def get_label(u: mda.Universe) -> str:
         return A + " " + T
 
     else:
-        return process_simulation_name(A)
+        return structure_name.process_simulation_name(A)
 
 
-def process_simulation_name(name: str) -> str:
-    """
-    Convert internal simulation codes into
-    readable names for labels etc...
-    """
-
-    # Parse single mutation name patterns.
-    mutation_pat = re.findall(r"mutation_(\w\d+\w)", name)
-
-    if mutation_pat:
-        mutation = mutation_pat[0]
-        return f"Mutação {mutation}"
-
-    # Parse variation name patterns.
-    number_pat = re.findall(r"\d+-{0,1}\d*", name)
-    identifier_pat = re.findall(r"^[^\d]+", name)
-
-    if number_pat:
-        number = number_pat[0]
-    else:
-        number = ""
-
-    if identifier_pat:
-        identifier_map = {
-            "DUMMY": "Artificial",
-            "NAT": "Natural",
-            "mutate": "Natural",
-            "mutation": "Natural",
-            "MUTATE": "Natural"
-        }
-        identifier_code = identifier_pat[0].split("_")[-1]
-        try:
-            identifier = identifier_map[identifier_code]
-        except KeyError:
-            identifier = "Desconhecido"
-
-    else:
-        return name
-
-    if number == "0":
-        return "Original"
-
-    return " ".join([identifier, number])
 
 
 def extract_positions(universe: mda.Universe, sel=STANDARD_SELECTION):
@@ -487,7 +445,7 @@ def global_analysis(arguments):
     ]
 
     if operation_mode.compare_full_timeseries:
-        sessions += [AnalysisSession(False, [], None)]
+        sessions += [AnalysisSession(False, ["total"], None)]
 
     for i, simulation_prefix in enumerate(simulation_prefixes):
         print(
@@ -527,11 +485,18 @@ def global_analysis(arguments):
 
         rmsf_norm = normalize_rmsf(session.rmsf_series)
 
-        rmsf_2d = dimension_reduction.tsne_reduce(rmsf_norm)
+        rmsf_2d = dimension_reduction.umap_reduce(rmsf_norm)
         dimension_reduction.plot_2D(
             rmsf_2d,
             session.labels,
             build_filepath(base_filepath, ["umap-rmsf"] + session.plot_suffix, arguments)
+        )
+
+        rmsd_2d = dimension_reduction.umap_reduce(session.rmsd_series)
+        dimension_reduction.plot_2D(
+            rmsd_2d,
+            session.labels,
+            build_filepath(base_filepath, ["umap-rmsd"] + session.plot_suffix, arguments)
         )
 
         if operation_mode.compare_pairwise:
