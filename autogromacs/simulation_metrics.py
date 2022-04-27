@@ -9,7 +9,7 @@ import argparse
 
 import pandas as pd
 from Bio.SeqUtils import ProtParam
-from antigen_protocol.Mutation import StructureMutator
+from antigen_protocol.Mutation import StructureMutator, structure_name
 
 
 def parse_arguments():
@@ -27,25 +27,6 @@ def get_sequence_properties(seq):
         "IP": analyzer.isoelectric_point(),
         "Gravy": analyzer.gravy()
     }
-
-
-def process_categorized_simulation_name(name):
-    replacements = {
-        "DUMMY": "Artificial",
-        "mutation": "Natural"
-    }
-
-    for word, repl in replacements.items():
-        name = re.sub(word, repl + " ", name)
-
-    domain_pattern = r"^(\w)_"
-    domains = re.findall(domain_pattern, name)
-
-    if domains:
-        name += f", domínio {domains[0]}"
-        name = re.sub(domain_pattern, "", name)
-
-    return name
 
 
 def get_seq(w):
@@ -119,8 +100,8 @@ def analyze_directory(options):
             )
 
         w = {
-            "Nome": process_categorized_simulation_name(subdirectory),
-            "Variações": "; ".join([
+            "Nome": structure_name.process_simulation_name(subdirectory),
+            "Variações": ", ".join([
                 m.show()
                 for m in structure_mutations
             ])
@@ -140,7 +121,7 @@ def analyze_directory(options):
     df.to_csv(options.output_file, index=False)
 
     if options.all_mutations_file:
-        with open(options.all_mutations_file, 'w') as f:
+        with open(options.all_mutations_file, 'w', encoding="utf-8") as f:
             w = "\n".join(mut.show() for mut in all_mutations)
             f.write(w)
 
