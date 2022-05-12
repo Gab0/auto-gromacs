@@ -23,7 +23,7 @@ setup(
             "gromacsfftester=autogromacs.forceFieldCompatTester:main",
             "mdanalyze=autogromacs.Analysis.mdanalysis:main",
             "plotxvg=autogromacs.parseXVG:main",
-            "mdmetrics=autogromacs.simulation_metrics:main"
+            "mdmetrics=autogromacs.simulation_metrics:main",
         ]
     },
     package_data={

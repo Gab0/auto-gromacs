@@ -13,9 +13,12 @@ from sklearn.preprocessing import normalize
 import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca, psa
 
-from . import mdplots, user_input, crosscorr, dimension_reduction
+from MDAnalysis.analysis.dihedrals import Ramachandran
 
-from auto_antigen.Mutation import structure_name
+from . import mdplots, user_input, crosscorr, dimension_reduction, superposition
+
+from antigen_protocol.Mutation import structure_name
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 STANDARD_SELECTION = "protein and name CA"
@@ -34,6 +37,7 @@ class AnalysisSession():
     pca_series: List[np.ndarray]
     total_times: List[int]
     sasa: List[np.ndarray]
+    snapshots: List[np.ndarray]
 
     def __init__(self, store_universe, plot_suffix, sample_pct):
         self.store_universe = store_universe
@@ -47,6 +51,7 @@ class AnalysisSession():
         self.pca_series = []
         self.total_times = []
         self.sasa = []
+        self.snapshots = []
 
     def update(self, universe: mda.Universe, arguments):
         """Add analysis for a single Universe into this session."""
@@ -70,6 +75,8 @@ class AnalysisSession():
         self.pca_series.append(analyze_pca(universe))
 
         self.sasa.append(analyze_sasa(universe))
+
+        #self.snapshots.append()
 
     def check(self):
         """Some checks for session integrity."""
@@ -105,7 +112,6 @@ class OperationMode():
     compare_samples = True
 
     def __init__(self, arguments):
-
         self.compare_full_timeseries = not arguments.matrix_only
 
 
@@ -134,12 +140,15 @@ def parse_arguments():
 
     parser.add_argument(
         "-f",
+        "--file-prefix",
         dest='FilePrefix',
         nargs="*",
         help="File prefix containing multiple GROMACS simulation directories."
     )
+
     parser.add_argument(
         "-d",
+        "--auto-detect",
         dest='AutoDetect',
         nargs="*",
         help=""
@@ -147,6 +156,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-t",
+        "--traj-suffix",
         dest='TrajSuffix',
         default="",
         help=""
@@ -154,6 +164,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-M",
+        "--matrix-only",
         dest='matrix_only',
         action="store_true",
         help=""
@@ -161,6 +172,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-T",
+        "--timeseries",
         dest='DoTimeseries',
         action="store_true",
         help=""
@@ -168,6 +180,7 @@ def parse_arguments():
 
     parser.add_argument(
         "-w",
+        "--write",
         dest='WriteOutput',
         action="store_true",
         help=""
@@ -184,6 +197,7 @@ def parse_arguments():
 
     parser.add_argument(
         '-m',
+        "--reference-mean",
         dest='ReferenceMean',
         action="store_true",
         help=""
@@ -191,6 +205,7 @@ def parse_arguments():
 
     parser.add_argument(
         '-s',
+        "--selection",
         dest='SimulationSelection',
         help="Simulation directories to be included in the analysis." +
         " Will be selected interactively if not specified."
@@ -256,6 +271,7 @@ def clean_universe_prefix(p: str) -> str:
 
 
 def get_label(u: mda.Universe) -> str:
+    """Extract a label to identify a single universe."""
     A = clean_universe_prefix(u.filename)
 
     if False:
@@ -265,8 +281,6 @@ def get_label(u: mda.Universe) -> str:
 
     else:
         return structure_name.process_simulation_name(A)
-
-
 
 
 def extract_positions(universe: mda.Universe, sel=STANDARD_SELECTION):
@@ -483,21 +497,24 @@ def global_analysis(arguments):
             series_mode=SeriesMode.MONOLITHIC
         )
 
-        rmsf_norm = normalize_rmsf(session.rmsf_series)
+        try:
+            rmsf_norm = normalize_rmsf(session.rmsf_series)
 
-        rmsf_2d = dimension_reduction.umap_reduce(rmsf_norm)
-        dimension_reduction.plot_2D(
-            rmsf_2d,
-            session.labels,
-            build_filepath(base_filepath, ["umap-rmsf"] + session.plot_suffix, arguments)
-        )
+            rmsf_2d = dimension_reduction.umap_reduce(rmsf_norm)
+            dimension_reduction.plot_2D(
+                rmsf_2d,
+                session.labels,
+                build_filepath(base_filepath, ["umap-rmsf"] + session.plot_suffix, arguments)
+            )
 
-        rmsd_2d = dimension_reduction.umap_reduce(session.rmsd_series)
-        dimension_reduction.plot_2D(
-            rmsd_2d,
-            session.labels,
-            build_filepath(base_filepath, ["umap-rmsd"] + session.plot_suffix, arguments)
-        )
+            rmsd_2d = dimension_reduction.umap_reduce(session.rmsd_series)
+            dimension_reduction.plot_2D(
+                rmsd_2d,
+                session.labels,
+                build_filepath(base_filepath, ["umap-rmsd"] + session.plot_suffix, arguments)
+            )
+        except ValueError:
+            print("UMAP failure!")
 
         if operation_mode.compare_pairwise:
             if session.universes:
@@ -508,6 +525,31 @@ def global_analysis(arguments):
                 universe,
                 build_filepath(base_filepath, ["cross-corr", label], arguments)
             )
+
+            ramachandran(
+                universe,
+                label,
+                build_filepath(base_filepath, ["rama", label], arguments)
+            )
+
+        if session.universes:
+            print("Building snapshot...")
+            superposition.build_snapshot(
+                session.universes,
+                session.plot_suffix,
+                session.labels
+            )
+
+
+def ramachandran(u: mda.Universe, label: str, output_filepath: str):
+
+    sel = u.select_atoms(STANDARD_SELECTION)
+    R = Ramachandran(sel).run()
+    mdplots.plot_ramachandran(
+        R,
+        label,
+        output_filepath
+    )
 
 
 def plot_rmsd_matrices(arguments, base_filepath, session):

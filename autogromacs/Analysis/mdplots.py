@@ -103,6 +103,7 @@ def show_rms_series_monolithic(
     ax.set_ylabel(mode_parameters.y_label)
 
     ax.legend(labels)
+
     plt.tight_layout()
 
     execute_output_plot(filepath)
@@ -272,6 +273,14 @@ def write_series(
 
 def data_sanity(rms_values):
     pass
+
+
+def plot_ramachandran(rama_analysis, label: str, output_file: str):
+    fig, ax = plt.subplots(figsize=plt.figaspect(1))
+    rama_analysis.plot(ax=ax, color='k', marker='o', s=5, ref=True)
+    #fig.title(label)
+    fig.tight_layout()
+    fig.savefig(output_file)
 
 
 seaborn_theme()
