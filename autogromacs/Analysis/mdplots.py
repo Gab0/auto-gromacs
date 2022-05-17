@@ -48,6 +48,9 @@ class ModeParameters():
             self.x_label = "Frame"
             self.y_label = r"SASA ($\AA$²)"
             self.enforce_ticks = False
+        elif mode == "RADGYR":
+            self.x_label = "Frame"
+            self.y_label = r"Raio de Giro ($\AA$)"
         else:
             raise Exception("Unknown plot identifier.")
 

@@ -37,6 +37,7 @@ class AnalysisSession():
     pca_series: List[np.ndarray]
     total_times: List[int]
     sasa: List[np.ndarray]
+    radgyr: List[List[float]]
     snapshots: List[np.ndarray]
 
     def __init__(self, store_universe, plot_suffix, sample_pct):
@@ -52,6 +53,7 @@ class AnalysisSession():
         self.total_times = []
         self.sasa = []
         self.snapshots = []
+        self.radgyr = []
 
     def update(self, universe: mda.Universe, arguments):
         """Add analysis for a single Universe into this session."""
@@ -76,6 +78,7 @@ class AnalysisSession():
 
         self.sasa.append(analyze_sasa(universe))
 
+        self.radgyr.append(analyze_radgyr(universe))
         #self.snapshots.append()
 
     def check(self):
@@ -618,6 +621,7 @@ def plot_series(
     plot(Q, session.rmsf_series, ["ts", "rmsf"], "RMSF")
     plot(Q, session.pca_series, ["ts", "variance"], "PCA")
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
+    plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
 
 
 def extract_slice_representation(
@@ -743,6 +747,15 @@ def analyze_sasa(u: mda.Universe):
         trajectory_sasa.append(sasa)
 
     return np.array(trajectory_sasa)
+
+
+def analyze_radgyr(u: mda.Universe):
+    trajectory_radgyr = []
+    atoms = u.select_atoms(STANDARD_SELECTION)
+    for _ in u.trajectory:
+        trajectory_radgyr.append(atoms.radius_of_gyration())
+
+    return trajectory_radgyr
 
 
 def get_best_stable_window(
