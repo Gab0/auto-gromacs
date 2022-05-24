@@ -22,19 +22,7 @@ EM_MDP = "em.mdp"
 NVT_MDP = "nvt.mdp"
 NPT_MDP = "npt.mdp"
 
-
-def message(func, msg):
-    def wrapper():
-        print(msg)
-        func()
-
-
-def pipeline_step(func, step_no, step_name):
-    """ Decorator to help organize the pipeline steps. """
-    def inner(*args):
-        func(step_no, step_name, *args)
-
-    return inner
+STEP_NO = 0
 
 
 def welcome():
@@ -50,6 +38,20 @@ def build_step_title(step_no: int, description: str):
     return f"\t[{now}]> STEP {step_no}: {description}"
 
 
+def pipeline_step(func):
+    """ Decorator to help organize the pipeline steps. """
+
+    global STEP_NO
+    STEP_NO += 1
+
+    def inner(pipeline, *args):
+        step_no = STEP_NO
+        print(build_step_title(step_no, func.__doc__))
+        func(pipeline, step_no, func.__name__, *args[1:])
+
+    return inner
+
+
 def handle_error(error_code, step_no, log_file=None):
     """ Handles error codes. """
     if error_code == 0:
@@ -62,12 +64,11 @@ def handle_error(error_code, step_no, log_file=None):
                 print(f.read())
 
         if error_code < 0:
-            print(f"HEADS UP: Killed by signal {-error_code} :(")
+            print(f"HEADS UP: Killed by signal {-error_code} ;{{")
             sys.exit(error_code)
         else:
             print("\n")
-            print("HEADS UP: Command failed for Step %s: return code %i."
-                  % (step_no, error_code))
+            print(f"HEADS UP: Command failed for Step {step_no}: return code {error_code}.")
             sys.exit(error_code)
 
 
@@ -115,7 +116,8 @@ class GromacsExecutables():
             setattr(self, gmx_command, settings.g_prefix + gmx_command)
 
 
-class GromacsSimulation(object):
+class GromacsSimulation():
+    """Main controller of the pipeline."""
     bashlog = None
 
     def __init__(self, arguments):
@@ -147,6 +149,9 @@ class GromacsSimulation(object):
 
         # FIXME: Organize these variables:
         self.downsample_prefix = "mdf"
+
+        self.STEP_NO = 0
+
 
     def to_wd(self, f, subdir: List[str] = []) -> str:
         basedir = os.path.join(self.working_dir, *subdir)
@@ -188,12 +193,15 @@ class GromacsSimulation(object):
 
     def run_process(
             self,
-            step_no: str,
+            step_no: Union[str, int],
             step_name: str,
             command: Union[List[str], str],
             log_file=None,
             stdin_input: Optional[str] = None):
         """Execute an external process."""
+
+        if not isinstance(step_no, str):
+            step_no = str(step_no)
 
         print("INFO: Attempting to execute " + step_name +
               " [STEP:" + step_no + "]")
@@ -206,7 +214,7 @@ class GromacsSimulation(object):
             command += f" >> {log_file} 2>&1"
 
         if self.bashlog is not None:
-            self.bashlog.write("%s\n" % command)
+            self.bashlog.write(f"{command}\n")
 
         if self.dummy:
             return
@@ -222,7 +230,8 @@ class GromacsSimulation(object):
 
             handle_error(ret.returncode, step_no, log_file)
 
-    def gather_files(self):
+    @pipeline_step
+    def gather_files(self, step_no, step_name, arguments):
         if self.ligand_file_path and not os.path.isfile(
                 self.ligand_file_path):
             print('Ligand file not found at ', self.ligand_file_path)
@@ -259,17 +268,18 @@ class GromacsSimulation(object):
         # shutil.copy2(self.ligand_topology_file_path,
         #             self.working_dir + 'ligand.itp')
 
-    def pdb2gmx_coord(self, arguments):
-        if self.pdb2gmx_proc(arguments, "protein"):
+    @pipeline_step
+    def pdb2gmx_coord(self, step_no, step_name, arguments):
+        if self.pdb2gmx_proc(step_no, step_name, arguments, "protein"):
             return 1
         if self.ligand_file_path:
-            if self.pdb2gmx_proc(arguments, "ligand"):
+            if self.pdb2gmx_proc(step_no, step_name, arguments, "ligand"):
                 return 1
             return self.prepare_system()
 
         return 0
 
-    def pdb2gmx_proc(self, arguments, TARGET):
+    def pdb2gmx_proc(self, step_no, step_name, arguments, TARGET):
         assert (TARGET in ["protein", "ligand"])
 
         print("-> STEP 1: Initiating Procedure to generate topology for %s."
@@ -300,10 +310,10 @@ class GromacsSimulation(object):
         # When processing 'includes' for topology files.
         self.fix_includes(TOPOL_PATH)
 
+    @pipeline_step
     def prepare_system(self):
-        """ Merges two molecules (PDB files). """
+        """ Merge two molecules (PDB files). """
         sys.exit()
-        print("-> STEP 2: Initiating Precedure to merge two molecules.")
         start_from_line = 3  # or whatever line I need to jump to
 
         # TODO: WHAT IS THIS?
@@ -378,7 +388,9 @@ class GromacsSimulation(object):
         print("INFO: Topology File Updated with Ligand topology info ")
         print("CHEERS: STEP[2] SUCCESSFULLY COMPLETED :)\n\n\n")
 
-    def solvate_complex(self, arguments):
+    @pipeline_step
+    def solvate_complex(self, step_no, step_name, arguments):
+        """Define the solvation box for the complex."""
         print(">STEP3 : Initiating Procedure to Solvate Complex")
         editconf = settings.g_prefix + "editconf"
         step_no = "3"
@@ -398,6 +410,9 @@ class GromacsSimulation(object):
 
         self.run_process(step_no, step_name, " ".join(command), log_file)
 
+    @pipeline_step
+    def solvate_box(self, step_no, step_name, arguments):
+        """Solvate the complex."""
         print(">STEP4 : Initiating Procedure to Solvate Complex")
         genbox = settings.g_prefix + "genbox"
         step_no = "4"
@@ -425,7 +440,10 @@ class GromacsSimulation(object):
 
         return self.run_process(step_no, step_name, " ".join(command))
 
-    def add_ions(self, arguments):
+    @pipeline_step
+    def add_ions(self, step_no, step_name, arguments):
+        """Add ions to neutralize the complex."""
+
         print(">STEP5 : Initiating Procedure to Add Ions & Neutralise the "
               "Complex")
 
@@ -465,12 +483,12 @@ class GromacsSimulation(object):
 
         print("DOUBLE CHEERS: SUCCESSFULLY PREPARED SYSTEM FOR SIMULATION")
 
-    def minimize(self, arguments):
-        print(">STEP7 : Preparing the files for Minimization")
+    @pipeline_step
+    def minimize_prepare(self, step_no, step_name, arguments):
+        """Prepare the files for the Energy Minimization steps."""
+        #print(">STEP7 : ")
         # grompp -f em_real.mdp -c solv_ions.gro -p topol.top -o em.tpr
         # mdrun -v -deffnm em
-        step_no = "7"
-        step_name = "Prepare files for Minimisation"
         # max warn 3 only for now
         command = [
             self.gromacs.grompp,
@@ -484,6 +502,9 @@ class GromacsSimulation(object):
 
         self.run_process(step_no, step_name, command)
 
+    @pipeline_step
+    def minimize(self, step_no, step_name, arguments):
+        """Execute the Energy Minimization simulation."""
         step_no = "8"
         step_name = " Minimisation"
 
@@ -491,7 +512,9 @@ class GromacsSimulation(object):
 
         self.run_process(step_no, step_name, command)
 
-    def nvt(self, arguments):
+    @pipeline_step
+    def nvt(self, step_no, step_name, arguments):
+        """Equilibration for volume and temperature."""
         print(">STEP9 : Initiating the Procedure to Equilibrate the System")
         print("Beginging Equilibration with NVT Ensemble")
         grompp = settings.g_prefix + "grompp"
@@ -524,7 +547,9 @@ class GromacsSimulation(object):
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
 
-    def npt(self, arguments):
+    @pipeline_step
+    def npt(self, step_no, step_name, arguments):
+        """Equilibration for pressure and temperature."""
         print(">STEP11 : Initiating the Procedure to Equilibrate the System")
         print("Beginging Equilibration with NPT Ensemble")
         grompp = settings.g_prefix + "grompp"
@@ -556,7 +581,8 @@ class GromacsSimulation(object):
         if not arguments.dummy:
             self.run_process(step_no, step_name, command)
 
-    def initmd(self, arguments):
+    @pipeline_step
+    def initmd(self, step_no, step_name, arguments):
         """ Prepare the production run. """
         print(">STEP13 : Initiating the Production Run")
         grompp = settings.g_prefix + "grompp"
@@ -614,8 +640,9 @@ class GromacsSimulation(object):
 
         return command
 
-    def main_md(self, arguments):
-        """ Execute the main MD simulation. """
+    @pipeline_step
+    def main_md(self, step_no, step_name, arguments):
+        """ Execute the production MD simulation. """
         step_no = "14"
         step_name = f"Running producion MD for {self.protein_file_path}."
         print(build_step_title(step_no, step_name))
@@ -627,7 +654,8 @@ class GromacsSimulation(object):
         if not arguments.dummy:
             self.run_process(step_no, step_name, command, log_file)
 
-    def continue_mdrun(self, arguments):
+    @pipeline_step
+    def continue_mdrun(self, step_no, step_name, arguments):
         """ Resumes a MD simulation. """
         critical_file = self.path_state_file()
         simulation_log = self.path_log("14")
@@ -679,7 +707,8 @@ class GromacsSimulation(object):
             log_file
         )
 
-    def skip_frames(self):
+    @pipeline_step
+    def skip_frames(self, step_no, step_name, arguments):
         """
         Extract a shorter trajectory from the original
         by skipping frames.
@@ -700,7 +729,8 @@ class GromacsSimulation(object):
             self.path_log(step_no)
         )
 
-    def solve_periodic_boundaries(self):
+    @pipeline_step
+    def solve_periodic_boundaries(self, step_no, step_name, arguments):
         """ Remove the periodic boundary conditions. """
         command = [
             self.gromacs.trjconv,
@@ -720,7 +750,8 @@ class GromacsSimulation(object):
             stdin_input="0"
         )
 
-    def analysis(self):
+    @pipeline_step
+    def secondary_structure_analysis(self, step_no, step_name, arguments):
         """ Executes DSSP analysis. """
         step_no = "ANALYSIS"
         command = [
@@ -778,7 +809,8 @@ class GromacsSimulation(object):
             stdin_input="4\n4"
         )
 
-    def pca(self):
+    @pipeline_step
+    def pca(self, step_no, step_name, arguments):
         """Run Principal Component Analysis unsing GROMACS' utilities."""
         step_no = "covar"
         SUBDIR = ["PCA"]
@@ -886,7 +918,7 @@ def fix_pme_ranks(command):
     return command
 
 
-def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = ""):
+def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = "") -> List[str]:
     """
     Manage additional arguments for when GPUs are used,
     while also considering usual HPC constraints
@@ -894,11 +926,11 @@ def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = ""):
     """
 
     if custom_offload:
-        command = [
+        _command = [
             [f"-{flag.strip()}", "gpu"]
             for flag in filter(None, custom_offload.split(","))
         ]
-        return list(itertools.chain.from_iterable(command))
+        return list(itertools.chain.from_iterable(_command))
 
     if not use_gpu:
         return []
@@ -1165,7 +1197,7 @@ def run_pipeline(arguments):
     if arguments.RemoveDirectory:
         backup_existing_directory(arguments.working_dir)
 
-    obj = GromacsSimulation(arguments)
+    pipeline = GromacsSimulation(arguments)
 
     Action = session_action_decision(arguments)
 
@@ -1173,36 +1205,38 @@ def run_pipeline(arguments):
 
     # DECLARE STEPS
     STEPS_GATHER = [
-        obj.gather_files
+        pipeline.gather_files
     ]
 
     STEPS_PREPARE = [
         # mandatory steps;
-        obj.pdb2gmx_coord,
-        obj.solvate_complex,
-        obj.add_ions,
-        obj.minimize,
+        pipeline.pdb2gmx_coord,
+        pipeline.solvate_complex,
+        pipeline.solvate_box,
+        pipeline.add_ions,
+        pipeline.minimize_prepare,
+        pipeline.minimize,
     ]
 
     STEPS_EXECUTE = [
-        obj.nvt,
-        obj.npt,
-        obj.initmd,
-        obj.main_md,
+        pipeline.nvt,
+        pipeline.npt,
+        pipeline.initmd,
+        pipeline.main_md,
     ]
 
     STEPS_RESUME = [
-        obj.continue_mdrun
+        pipeline.continue_mdrun
     ]
 
     STEPS_POSTPROCESS = [
-        obj.skip_frames,
-        obj.solve_periodic_boundaries
+        pipeline.skip_frames,
+        pipeline.solve_periodic_boundaries
     ]
 
     STEPS_ANALYSIS = [
-        obj.analysis,
-        obj.pca
+        pipeline.secondary_structure_analysis,
+        pipeline.pca
     ]
 
     require_pdb = False
@@ -1232,19 +1266,21 @@ def run_pipeline(arguments):
             STEPS_POSTPROCESS
 
     if require_pdb:
-        if not obj.protein_file_path:
+        if not pipeline.protein_file_path:
             print("No input protein specified.")
             sys.exit(1)
 
     for step in steps:
-        take_arguments = 'arguments' in step.__code__.co_varnames
+        fn_args = step.__code__.co_varnames
+        print(fn_args)
+        take_arguments = 'arguments' in fn_args
         if take_arguments:
-            step(arguments)
+            step(pipeline, arguments)
         else:
-            step()
+            step(pipeline, arguments)
 
     # -- Create MDP settings summary.
-    mdp_control.build_settings_summary(obj, arguments)
+    mdp_control.build_settings_summary(pipeline, arguments)
 
 
 def main():
