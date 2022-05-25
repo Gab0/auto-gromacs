@@ -9,6 +9,7 @@ import pandas as pd
 
 
 def seaborn_theme():
+    """All plots will use this seaborn theme."""
     sns.set_theme(
         style="darkgrid",
         rc={
@@ -21,15 +22,18 @@ def seaborn_theme():
     plt.rcParams["figure.dpi"] = 700
 
 
-def _(_1, x, _2):
-    return x
+def _(_0, _1, _2):
+    """Helper function, just returns the second argument."""
+    return _1
 
 
 class ModeParameters():
+    """Decodes the mode string into various plot parameter sets."""
     x_label = ""
     y_label = r"$\Delta$ RMSD ($\AA$)"
     enforce_ticks = True
     make_x = _
+    moving_average = False
 
     def __init__(self, mode: str):
 
@@ -51,11 +55,16 @@ class ModeParameters():
         elif mode == "RADGYR":
             self.x_label = "Frame"
             self.y_label = r"Raio de Giro ($\AA$)"
+        elif mode == "NSECONDARY":
+            self.x_label = "Tempo (ns)"
+            self.y_label = r"$n$ de Resíduos em Estruturas Secundárias"
+            self.make_x = self.to_time_x
+            self.moving_average = True
         else:
-            raise Exception("Unknown plot identifier.")
+            raise Exception(f"Unknown plot identifier: {mode}.")
 
-    def to_time_x(self, X, t):
-        return frames_to_time(X, t)
+    def to_time_x(self, xs, _time):
+        return frames_to_time(xs, _time)
 
 
 def show_matrix(results, labels, filepath: Union[str, None]):
@@ -112,16 +121,16 @@ def show_rms_series_monolithic(
     execute_output_plot(filepath)
 
 
-def enforce_ax_ticks(ax, TICK_MAX, TICK_INTERVAL):
+def enforce_ax_ticks(ax, tick_max, tick_interval):
 
-    YTICKS = list(range(0, 100, TICK_INTERVAL))
+    YTICKS = list(range(0, int(tick_max), int(tick_interval)))
 
-    # if Y_MAX < YTICK_INTERVAL:
+    # if Y_MAX < Ytick_interval:
     #     YTICKS.append(Y_MAX - 0.1)
 
     ax.set_yticks(sorted(YTICKS))
 
-    ax.set_ylim(bottom=0, top=max(TICK_MAX, 1.05 * TICK_INTERVAL))
+    ax.set_ylim(bottom=0, top=max(tick_max, 1.05 * tick_interval))
 
 
 def hide_ax_ticks(ax):
@@ -195,10 +204,10 @@ def show_rms_series_stacked(
         if Values.ndim == 3:
             colors = ["black", "orange"]
             styles = ["-", "--"]
-            INITIALIZED = False
+            plot_initialized = False
 
             for sY, plot_fn, style, color in zip(Y, stacked_fn, styles, colors):
-                if INITIALIZED:
+                if plot_initialized:
                     cax = axk[i].twinx()
 
                     hide_ax_ticks(cax)
@@ -214,14 +223,18 @@ def show_rms_series_stacked(
 
                 if mode_parameters.enforce_ticks:
                     enforce_ax_ticks(cax, round(max(sY)), round(max(sY)))
-                INITIALIZED = True
+                plot_initialized = True
 
         elif Values.ndim == 2:
             axk[i].plot(X, Y, "-", color="black")
             if mode_parameters.enforce_ticks:
-                enforce_ax_ticks(axk[i], Y_MAX, 5)
+                tick_interval = 5 if Y_MAX <= 25 else int(Y_MAX / 5)
+                enforce_ax_ticks(axk[i], Y_MAX, tick_interval)
+            if mode_parameters.moving_average:
+                moving_average = pd.Series(Y).rolling(10).mean()
+                axk[i].plot(X, moving_average, "-", color="grey")
         else:
-            print(f"{Values.ndim}")
+            print(f"Number of dimensions for value: {Values.ndim}")
             raise Exception(f"Unexpected values shape of {Values.shape}")
 
         axk[i].set_ylabel(label, fontsize=12)
