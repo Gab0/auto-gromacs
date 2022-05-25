@@ -5,12 +5,12 @@ import MDAnalysis as mda
 from pymol import cmd
 
 
-def build_snapshot(us: List[mda.Universe], identifier: str, labels: List[str]):
+def build_snapshot(us: List[mda.Universe], identifier: List[str], labels: List[str]):
     ags = map(lambda u: u.select_atoms(sel="protein"), us)
 
     pdb_filenames = []
     for group, label in zip(ags, labels):
-        fname = f"snapshot_{identifier}_{label}.pdb"
+        fname = f"snapshot_{'_'.join(identifier)}_{label}.pdb"
         group.write(fname)
         pdb_filenames.append(fname)
 
