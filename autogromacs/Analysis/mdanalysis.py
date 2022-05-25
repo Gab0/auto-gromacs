@@ -24,6 +24,21 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 STANDARD_SELECTION = "protein and name CA"
 
 
+class Positions():
+    def __init__(self, pos, universe_name, traj_idx):
+        self.positions = pos
+        self.universe_name = universe_name
+        self.traj_idx = traj_idx
+
+        self.label = self.make_label()
+
+    def make_label(self):
+        return "_".join([
+            clean_universe_prefix(self.universe_name),
+            index_label(self.traj_idx)
+        ])
+
+
 class AnalysisSession():
     """Holds what is saved from all loaded Universes for a single analysis."""
     store_universe: bool = False
@@ -39,6 +54,7 @@ class AnalysisSession():
     sasa: List[np.ndarray]
     radgyr: List[List[float]]
     snapshots: List[np.ndarray]
+    secondary_structure_n: List[List[float]]
 
     def __init__(self, store_universe, plot_suffix, sample_pct):
         self.store_universe = store_universe
@@ -46,16 +62,28 @@ class AnalysisSession():
         self.sample_pct = sample_pct
 
         self.universes = []
-        self.labels = []
-        self.rmsd_series = []
-        self.rmsf_series = []
-        self.pca_series = []
-        self.total_times = []
-        self.sasa = []
-        self.snapshots = []
-        self.radgyr = []
 
-    def update(self, universe: mda.Universe, arguments):
+        self.secondary_structure_n = []
+
+        for feature_name, _ in self.features:
+            self.__dict__[feature_name] = []
+
+    @property
+    def features(self):
+        """Declare all the features that can be extracted from"""
+        return [
+            ("labels", get_label),
+            # Total times in nanoseconds;
+            ("total_times", lambda u: u.trajectory.totaltime / 1000),
+            ("rmsd_series", time_series_rmsd),
+            ("rmsf_series", time_series_rmsf),
+            ("pca_series", analyze_pca),
+            ("sasa", analyze_sasa),
+            ("radgyr", analyze_radgyr),
+            #("secondary", analyze_secondary)
+        ]
+
+    def update(self, universe: mda.Universe, simulation_directory):
         """Add analysis for a single Universe into this session."""
 
         print(f"Updating. {self.store_universe}")
@@ -68,17 +96,10 @@ class AnalysisSession():
         if self.store_universe:
             self.universes.append(universe)
 
-        # Store total time in nanoseconds;
-        self.total_times.append(universe.trajectory.totaltime / 1000)
-        self.labels.append(get_label(universe))
-        self.rmsd_series.append(time_series_rmsd(universe, arguments))
-        self.rmsf_series.append(time_series_rmsf(universe))
+        for feature_name, feature_extractor in self.features:
+            self.__dict__[feature_name].append(feature_extractor(universe))
 
-        self.pca_series.append(analyze_pca(universe))
-
-        self.sasa.append(analyze_sasa(universe))
-
-        self.radgyr.append(analyze_radgyr(universe))
+        self.secondary_structure_n.append(analyze_secondary(simulation_directory))
         #self.snapshots.append()
 
     def check(self):
@@ -234,20 +255,6 @@ def autodetect_files(root_path, pattern="md.gro") -> List[str]:
 
     return list(sorted(detect(root_path)))
 
-
-class Positions():
-    def __init__(self, pos, universe_name, traj_idx):
-        self.positions = pos
-        self.universe_name = universe_name
-        self.traj_idx = traj_idx
-
-        self.label = self.make_label()
-
-    def make_label(self):
-        return "_".join([
-            clean_universe_prefix(self.universe_name),
-            index_label(self.traj_idx)
-        ])
 
 
 def index_label(label_id: int) -> str:
@@ -471,11 +478,11 @@ def global_analysis(arguments):
         )
 
         universe = load_universe(simulation_prefix, arguments.TrajSuffix)
-
+        simulation_directory = os.path.join(*os.path.split(simulation_prefix)[:-1])
         show_universe_information(universe)
 
         for session in sessions:
-            session.update(universe, arguments)
+            session.update(universe, simulation_directory)
 
         # Close full-length universe to preserve RAM memory.
         universe.trajectory.close()
@@ -614,14 +621,20 @@ def plot_series(
                     arguments),
                 mode
             )
-        except ValueError:
-            print(f"Could not create {mode} plots for {extra_identifier}.")
+        except ValueError as e:
+            print(f"Could not create {mode} plots for {extra_identifier}")
+            print(e)
+            raise e
 
+    # for feature, _, plot in session.plotable_features:
+    #     plot(Q, session.getattr(feature),)
     plot(Q, session.rmsd_series, ["ts", "rmsd"], "RMSDt")
     plot(Q, session.rmsf_series, ["ts", "rmsf"], "RMSF")
     plot(Q, session.pca_series, ["ts", "variance"], "PCA")
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
     plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
+    print(session.secondary_structure_n)
+    plot(Q, session.secondary_structure_n, ["ts", "secondary", "strut"], "NSECONDARY")
 
 
 def extract_slice_representation(
@@ -656,7 +669,7 @@ def snapshot_to_universe(source_universe, new_trajectory) -> mda.Universe:
 
     universe = source_universe.load_new(new_trajectory)
 
-    #universe.trajectory.filename = source_universe.trajectory.filename
+    # universe.trajectory.filename = source_universe.trajectory.filename
     return universe
 
 
@@ -674,8 +687,9 @@ def align_universe(u: mda.Universe,
     return u
 
 
-def time_series_rmsd(universe: mda.Universe, arguments, verbose=False) -> List[float]:
+def time_series_rmsd(universe: mda.Universe, verbose=False) -> List[float]:
     """Extracts the timeseries RMSD from a Universe."""
+
     rmsds = []
 
     total_length = len(universe.trajectory)
@@ -736,7 +750,8 @@ def get_atom_radius(atom):
     raise Exception("Unknown ATOM {atom.name}.")
 
 
-def analyze_sasa(u: mda.Universe):
+def analyze_sasa(u: mda.Universe) -> np.ndarray:
+    """Extract SASA value for each trajectory frame."""
     atoms = u.select_atoms(STANDARD_SELECTION)
     positions = u.trajectory.timeseries(asel=atoms)
 
@@ -749,13 +764,25 @@ def analyze_sasa(u: mda.Universe):
     return np.array(trajectory_sasa)
 
 
-def analyze_radgyr(u: mda.Universe):
+def analyze_radgyr(u: mda.Universe) -> List[float]:
+    """Extract the radius of gyration metric for each trajectory frame."""
     trajectory_radgyr = []
     atoms = u.select_atoms(STANDARD_SELECTION)
     for _ in u.trajectory:
         trajectory_radgyr.append(atoms.radius_of_gyration())
 
     return trajectory_radgyr
+
+
+def analyze_secondary(simulation_directory: str) -> List[float]:
+    """
+    Extract the number of residues participating in secondary structures
+    on each frame.
+    """
+    xvg = os.path.join(simulation_directory, "scount.xvg")
+    structs = np.loadtxt(xvg, comments=["@", "#"], unpack=True)
+    structural = structs[1]
+    return cast(List[float], structural)
 
 
 def get_best_stable_window(
