@@ -121,19 +121,20 @@ def show_rms_series_monolithic(
     execute_output_plot(filepath)
 
 
-def enforce_ax_ticks(ax, tick_max, tick_interval):
+def enforce_ax_ticks(ax, tick_min, tick_max, tick_interval):
 
-    YTICKS = list(range(0, int(tick_max), int(tick_interval)))
+    YTICKS = list(range(int(tick_min), int(tick_max), int(tick_interval)))
 
     # if Y_MAX < Ytick_interval:
     #     YTICKS.append(Y_MAX - 0.1)
 
     ax.set_yticks(sorted(YTICKS))
 
-    ax.set_ylim(bottom=0, top=max(tick_max, 1.05 * tick_interval))
+    ax.set_ylim(bottom=tick_min, top=max(tick_max, 1.05 * tick_interval))
 
 
 def hide_ax_ticks(ax):
+    """Hide axis spines for all directions.."""
     ax.spines['top'].set_color('none')
     ax.spines['bottom'].set_color('none')
     ax.spines['left'].set_color('none')
@@ -222,7 +223,7 @@ def show_rms_series_stacked(
                     raise(e)
 
                 if mode_parameters.enforce_ticks:
-                    enforce_ax_ticks(cax, round(max(sY)), round(max(sY)))
+                    enforce_ax_ticks(cax, round(min(sY)), round(max(sY)), round(max(sY)))
                 plot_initialized = True
 
         elif Values.ndim == 2:
@@ -232,7 +233,7 @@ def show_rms_series_stacked(
                 enforce_ax_ticks(axk[i], Y_MAX, tick_interval)
             if mode_parameters.moving_average:
                 moving_average = pd.Series(Y).rolling(10).mean()
-                axk[i].plot(X, moving_average, "-", color="grey")
+                axk[i].plot(X, moving_average, "-", color="grey", linewidth=1.5)
         else:
             print(f"Number of dimensions for value: {Values.ndim}")
             raise Exception(f"Unexpected values shape of {Values.shape}")
