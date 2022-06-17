@@ -14,7 +14,7 @@ import itertools
 from .core.messages import welcome_message
 from .core import settings
 
-from . import arguments, mdp_control
+from . import cli_arguments, mdp_control
 
 IONS_MDP = "ions.mdp"
 EM_MDP = "em.mdp"
@@ -861,6 +861,7 @@ class GromacsSimulation():
         )
 
 
+# FIXME: Unused.
 def calculate_solute_nmol(solvent_nmol: int, molar_concentration: float) -> int:
     mol_mass = {
         "NaCl": 58.443,
@@ -1074,13 +1075,7 @@ def run_pipeline(arguments):
             sys.exit(1)
 
     for step in steps:
-        fn_args = step.__code__.co_varnames
-        print(fn_args)
-        take_arguments = 'arguments' in fn_args
-        if take_arguments:
-            step(pipeline, arguments)
-        else:
-            step(pipeline, arguments)
+        step(pipeline, arguments)
 
     # -- Create MDP settings summary.
     mdp_control.build_settings_summary(pipeline, arguments)
@@ -1088,9 +1083,9 @@ def run_pipeline(arguments):
 
 def main():
     """ Execute pipeline. """
-    arguments = arguments.parse_arguments()
+    args = cli_arguments.parse_arguments()
 
-    run_pipeline(arguments)
+    run_pipeline(args)
 
 
 if __name__ == "__main__":
