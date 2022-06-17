@@ -123,7 +123,9 @@ def show_rms_series_monolithic(
 
 def enforce_ax_ticks(ax, tick_min, tick_max, tick_interval):
 
-    YTICKS = list(range(int(tick_min), int(tick_max), int(tick_interval)))
+    YTICKS = list(range(int(tick_min),
+                        int(tick_max),
+                        int(tick_interval)))
 
     # if Y_MAX < Ytick_interval:
     #     YTICKS.append(Y_MAX - 0.1)
@@ -176,6 +178,7 @@ def show_rms_series_stacked(
 
     try:
         Y_MAX = np.max(Values)
+        Y_MIN = np.min(Values)
     except ValueError as e:
         raise e
 
@@ -202,6 +205,7 @@ def show_rms_series_stacked(
             total_times[i]
         )
         print(Values.ndim)
+        # Plots with three dimensions such as PCA plots;
         if Values.ndim == 3:
             colors = ["black", "orange"]
             styles = ["-", "--"]
@@ -226,11 +230,12 @@ def show_rms_series_stacked(
                     enforce_ax_ticks(cax, round(min(sY)), round(max(sY)), round(max(sY)))
                 plot_initialized = True
 
+        # Common 2D plots (lines);
         elif Values.ndim == 2:
             axk[i].plot(X, Y, "-", color="black")
             if mode_parameters.enforce_ticks:
-                tick_interval = 5 if Y_MAX <= 25 else int(Y_MAX / 5)
-                enforce_ax_ticks(axk[i], Y_MAX, tick_interval)
+                tick_interval = 5 if Y_MAX <= 25 else int((Y_MAX - Y_MIN) // 5)
+                enforce_ax_ticks(axk[i], Y_MIN, Y_MAX, tick_interval)
             if mode_parameters.moving_average:
                 moving_average = pd.Series(Y).rolling(10).mean()
                 axk[i].plot(X, moving_average, "-", color="grey", linewidth=1.5)
