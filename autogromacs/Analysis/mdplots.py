@@ -35,6 +35,8 @@ class ModeParameters():
     make_x = _
     moving_average = False
 
+    label_time = "Tempo (ns)"
+
     def __init__(self, mode: str):
 
         if mode == "RMSDt":
@@ -49,9 +51,9 @@ class ModeParameters():
             self.x_label = "Componente"
             self.y_label = "Variância Acumulada"
         elif mode == "SASA":
-            self.x_label = "Frame"
+            self.x_label = self.label_time
             self.y_label = r"SASA ($\AA$²)"
-            self.enforce_ticks = False
+            self.make_x = self.to_time_x
         elif mode == "RADGYR":
             self.x_label = "Frame"
             self.y_label = r"Raio de Giro ($\AA$)"
@@ -127,12 +129,14 @@ def enforce_ax_ticks(ax, tick_min, tick_max, tick_interval):
                         int(tick_max),
                         int(tick_interval)))
 
-    # if Y_MAX < Ytick_interval:
-    #     YTICKS.append(Y_MAX - 0.1)
-
     ax.set_yticks(sorted(YTICKS))
 
-    ax.set_ylim(bottom=tick_min, top=max(tick_max, 1.05 * tick_interval))
+    margin_mod = 0.05 * (tick_max - tick_min)
+
+    ax.set_ylim(
+        bottom=tick_min - margin_mod,
+        top=tick_max + margin_mod
+    )
 
 
 def hide_ax_ticks(ax):
@@ -150,6 +154,18 @@ def hide_ax_ticks(ax):
         left=False,
         right=False
     )
+
+
+def determine_tick_interval(y_max, y_min) -> int:
+
+    y_delta = int(y_max - y_min)
+    optimal_interval = 5
+    if y_delta < optimal_interval:
+        return y_delta
+    if y_max <= 25:
+        return optimal_interval
+
+    return int(y_delta // 5)
 
 
 def show_rms_series_stacked(
@@ -234,7 +250,7 @@ def show_rms_series_stacked(
         elif Values.ndim == 2:
             axk[i].plot(X, Y, "-", color="black")
             if mode_parameters.enforce_ticks:
-                tick_interval = 5 if Y_MAX <= 25 else int((Y_MAX - Y_MIN) // 5)
+                tick_interval = determine_tick_interval(Y_MAX, Y_MIN)
                 enforce_ax_ticks(axk[i], Y_MIN, Y_MAX, tick_interval)
             if mode_parameters.moving_average:
                 moving_average = pd.Series(Y).rolling(10).mean()
@@ -251,16 +267,16 @@ def show_rms_series_stacked(
 
         if i + 1 < len(labels):
             axk[i].set(xlabel=None)
-
+            axk[i].get_xaxis().set_ticks([])
     # fig.text(0.5, 0.01, XL, ha='center')
     # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
 
     hide_ax_ticks(ax)
-    ax.set_xlabel(mode_parameters.x_label)
-    ax.set_ylabel(mode_parameters.y_label)
+    ax.set_xlabel(mode_parameters.x_label, labelpad=0.2)
+    ax.set_ylabel(mode_parameters.y_label, labelpad=13.0)
 
-    plt.subplots_adjust(hspace=0.05)
-
+    plt.subplots_adjust(hspace=0.03)
+    #plt.tight_layout()
     execute_output_plot(filepath)
 
 
