@@ -1,9 +1,7 @@
 from typing import List, Optional, cast, Tuple
 import enum
-import argparse
 import sys
 import os
-import re
 import warnings
 import freesasa
 import numpy as np
@@ -15,7 +13,8 @@ from MDAnalysis.analysis import align, rms, pca, psa
 
 from MDAnalysis.analysis.dihedrals import Ramachandran
 
-from . import mdplots, user_input, crosscorr, dimension_reduction, superposition
+from . import cli_arguments, mdplots, user_input
+from . import crosscorr, dimension_reduction, superposition
 
 from antigen_protocol.Mutation import structure_name
 
@@ -99,7 +98,16 @@ class AnalysisSession():
         for feature_name, feature_extractor in self.features:
             self.__dict__[feature_name].append(feature_extractor(universe))
 
-        self.secondary_structure_n.append(analyze_secondary(simulation_directory))
+        secondary_n = analyze_secondary(simulation_directory)
+
+        print("SEC")
+        print(secondary_n)
+
+        (sf, st) = slice_to_indexes(self.sample_pct, len(secondary_n))
+        secondary_n_output = secondary_n[sf:st]
+        print("N OUT")
+        print(secondary_n_output)
+        self.secondary_structure_n.append(secondary_n_output)
         #self.snapshots.append()
 
     def check(self):
@@ -157,86 +165,7 @@ class AlignType(enum.Enum):
         if self == AlignType.MEAN_FRAME:
             return traj.mean(axis=1)[:, None, :]
 
-
-def parse_arguments():
-    """Parse commandline arguments."""
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "-f",
-        "--file-prefix",
-        dest='FilePrefix',
-        nargs="*",
-        help="File prefix containing multiple GROMACS simulation directories."
-    )
-
-    parser.add_argument(
-        "-d",
-        "--auto-detect",
-        dest='AutoDetect',
-        nargs="*",
-        help=""
-    )
-
-    parser.add_argument(
-        "-t",
-        "--traj-suffix",
-        dest='TrajSuffix',
-        default="",
-        help=""
-    )
-
-    parser.add_argument(
-        "-M",
-        "--matrix-only",
-        dest='matrix_only',
-        action="store_true",
-        help=""
-    )
-
-    parser.add_argument(
-        "-T",
-        "--timeseries",
-        dest='DoTimeseries',
-        action="store_true",
-        help=""
-    )
-
-    parser.add_argument(
-        "-w",
-        "--write",
-        dest='WriteOutput',
-        action="store_true",
-        help=""
-    )
-
-    parser.add_argument(
-        "-i",
-        "--identifier",
-        dest='OutputIdentifier',
-        required=True,
-        help="Unique identifier for the current analysis." +
-        " Will be included in all output filenames."
-    )
-
-    parser.add_argument(
-        '-m',
-        "--reference-mean",
-        dest='ReferenceMean',
-        action="store_true",
-        help=""
-    )
-
-    parser.add_argument(
-        '-s',
-        "--selection",
-        dest='SimulationSelection',
-        help="Simulation directories to be included in the analysis." +
-        " Will be selected interactively if not specified."
-
-    )
-
-    return parser.parse_args()
+        return traj
 
 
 def autodetect_files(root_path, pattern="md.gro") -> List[str]:
@@ -254,7 +183,6 @@ def autodetect_files(root_path, pattern="md.gro") -> List[str]:
                 yield file_to_prefix(F)
 
     return list(sorted(detect(root_path)))
-
 
 
 def index_label(label_id: int) -> str:
@@ -507,25 +435,6 @@ def global_analysis(arguments):
             series_mode=SeriesMode.MONOLITHIC
         )
 
-        try:
-            rmsf_norm = normalize_rmsf(session.rmsf_series)
-
-            rmsf_2d = dimension_reduction.umap_reduce(rmsf_norm)
-            dimension_reduction.plot_2D(
-                rmsf_2d,
-                session.labels,
-                build_filepath(base_filepath, ["umap-rmsf"] + session.plot_suffix, arguments)
-            )
-
-            rmsd_2d = dimension_reduction.umap_reduce(session.rmsd_series)
-            dimension_reduction.plot_2D(
-                rmsd_2d,
-                session.labels,
-                build_filepath(base_filepath, ["umap-rmsd"] + session.plot_suffix, arguments)
-            )
-        except ValueError:
-            print("UMAP failure!")
-
         if operation_mode.compare_pairwise:
             if session.universes:
                 plot_rmsd_matrices(arguments, base_filepath, session)
@@ -549,6 +458,28 @@ def global_analysis(arguments):
                 session.plot_suffix,
                 session.labels
             )
+
+
+def plot_umap(session: AnalysisSession, arguments, base_filepath: str):
+    try:
+        rmsf_norm = normalize_rmsf(session.rmsf_series)
+
+        rmsf_2d = dimension_reduction.umap_reduce(rmsf_norm)
+        dimension_reduction.plot_2D(
+            rmsf_2d,
+            session.labels,
+            build_filepath(base_filepath, ["umap-rmsf"] + session.plot_suffix, arguments)
+        )
+
+        rmsd_2d = dimension_reduction.umap_reduce(session.rmsd_series)
+        dimension_reduction.plot_2D(
+            rmsd_2d,
+            session.labels,
+            build_filepath(base_filepath, ["umap-rmsd"] + session.plot_suffix, arguments)
+        )
+    except ValueError as e:
+        print("UMAP failure!")
+        print(e)
 
 
 def ramachandran(u: mda.Universe, label: str, output_filepath: str):
@@ -624,7 +555,6 @@ def plot_series(
         except ValueError as e:
             print(f"Could not create {mode} plots for {extra_identifier}")
             print(e)
-            raise e
 
     # for feature, _, plot in session.plotable_features:
     #     plot(Q, session.getattr(feature),)
@@ -633,8 +563,26 @@ def plot_series(
     plot(Q, session.pca_series, ["ts", "variance"], "PCA")
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
     plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
+    print("LOOKING SEC:")
     print(session.secondary_structure_n)
     plot(Q, session.secondary_structure_n, ["ts", "secondary", "strut"], "NSECONDARY")
+
+
+def slice_to_indexes(
+        slice_pct: Optional[Tuple[float, float]],
+        total_length: int
+) -> Tuple[int, int]:
+    if slice_pct is None:
+        return (0, total_length)
+
+    def convert_to_index(pct, L):
+        return int(pct * L)
+
+    pct_start, pct_end = slice_pct
+    return (
+        convert_to_index(pct_start, total_length),
+        convert_to_index(pct_end, total_length)
+    )
 
 
 def extract_slice_representation(
@@ -643,14 +591,7 @@ def extract_slice_representation(
 ) -> mda.Universe:
     trajectory_length = len(u.trajectory)
 
-    def convert_to_frame(pct, L):
-        return int(pct * L)
-
-    pct_start, pct_end = slice_position_pct
-    slice_position = (
-        convert_to_frame(pct_start, trajectory_length),
-        convert_to_frame(pct_end, trajectory_length)
-    )
+    slice_position = slice_to_indexes(slice_position_pct, trajectory_length)
 
     new_u = mda.Universe(u.filename, u.trajectory.filename)
     new_u.transfer_to_memory(
@@ -807,7 +748,7 @@ def get_best_stable_window(
 
 def main():
     """Executable entrypoint."""
-    arguments = parse_arguments()
+    arguments = cli_arguments.parse_arguments()
     global_analysis(arguments)
 
 

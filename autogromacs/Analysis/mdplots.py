@@ -309,7 +309,7 @@ def write_series(
     df.to_csv(filepath)
 
 
-def data_sanity(rms_values):
+def check_data_sanity(rms_values) -> bool:
     pass
 
 
