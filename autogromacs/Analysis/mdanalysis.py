@@ -423,13 +423,17 @@ def global_analysis(arguments):
                 for _universe in session.universes:
                     _universe.trajectory.close()
                     del _universe
+            else:
+                print("Session has no attached universes.")
 
         # Close full-length universe to preserve RAM memory.
         universe.trajectory.close()
         del universe
 
     for session in sessions:
+        # FIXME: Is `del` required here?
         del session.universes
+        session.universes = []
 
     return sessions
 
