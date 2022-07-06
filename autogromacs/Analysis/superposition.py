@@ -5,13 +5,28 @@ import MDAnalysis as mda
 from pymol import cmd
 
 
+def generate_filename(method: str, identifier: List[str], label: str) -> str:
+    """ Generate a filename for an output pdb file."""
+    segments = [method, *identifier, label]
+    return "_".join(segments) + ".pdb"
+
+
 def build_snapshot(us: List[mda.Universe], identifier: List[str], labels: List[str]):
-    ags = map(lambda u: u.select_atoms(sel="protein"), us)
+    resolution_divisor = 10
 
     pdb_filenames = []
-    for group, label in zip(ags, labels):
-        fname = f"snapshot_{'_'.join(identifier)}_{label}.pdb"
-        group.write(fname)
+
+    for universe, label in zip(us, labels):
+        fname = generate_filename("movie", identifier, label)
+        atom_group = universe.select_atoms(sel="protein")
+
+        with mda.Writer(fname, multiframe=True) as output_pdb:
+            for idx, ts in enumerate(universe.trajectory):
+                if not idx % resolution_divisor:
+                    output_pdb.write(atom_group)
+
+        #fname = generate_filename("snapshot", identifier, label)
+        #group.write(fname)
         pdb_filenames.append(fname)
 
     for pdb in pdb_filenames:
@@ -25,4 +40,8 @@ def build_snapshot(us: List[mda.Universe], identifier: List[str], labels: List[s
         object="aln_super"
     )
 
-    cmd.save("output.pdb")
+    fname = generate_filename("snapshot", identifier, "all")
+    cmd.save(fname)
+
+
+#def build_movie(us: List[mda.Universe], identifier: List[str], labels: List[str]):

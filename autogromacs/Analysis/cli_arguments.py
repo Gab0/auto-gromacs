@@ -79,4 +79,20 @@ def parse_arguments():
 
     )
 
+    parser.add_argument(
+        '--load-session',
+        help="Filepath to load session files from (using pickle)."
+    )
+
+    parser.add_argument(
+        '--write-session',
+        help="Filepath to write session files to (using pickle)."
+    )
+
+    parser.add_argument(
+        '--no-plot',
+        action="store_true",
+        help="When TRUE it will NOT create plots."
+    )
+
     return parser.parse_args()

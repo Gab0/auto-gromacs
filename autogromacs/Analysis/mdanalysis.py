@@ -1,8 +1,11 @@
 from typing import List, Optional, cast, Tuple
+
 import enum
 import sys
 import os
 import warnings
+import pickle
+
 import freesasa
 import numpy as np
 
@@ -383,7 +386,6 @@ def global_analysis(arguments):
         )
 
     operation_mode = OperationMode(arguments)
-    base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
 
     print("Data loading done.")
 
@@ -411,10 +413,32 @@ def global_analysis(arguments):
 
         for session in sessions:
             session.update(universe, simulation_directory)
+            if session.universes:
+                print("Building snapshot...")
+                superposition.build_snapshot(
+                    session.universes,
+                    session.plot_suffix,
+                    session.labels
+                )
+                for _universe in session.universes:
+                    _universe.trajectory.close()
+                    del _universe
 
         # Close full-length universe to preserve RAM memory.
         universe.trajectory.close()
         del universe
+
+    for session in sessions:
+        del session.universes
+
+    return sessions
+
+
+def plot_sessions(sessions, arguments):
+    """Plot routines for all gathered data."""
+
+    operation_mode = OperationMode(arguments)
+    base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
 
     for session in sessions:
         session.check_stable()
@@ -449,14 +473,6 @@ def global_analysis(arguments):
                 universe,
                 label,
                 build_filepath(base_filepath, ["rama", label], arguments)
-            )
-
-        if session.universes:
-            print("Building snapshot...")
-            superposition.build_snapshot(
-                session.universes,
-                session.plot_suffix,
-                session.labels
             )
 
 
@@ -749,7 +765,19 @@ def get_best_stable_window(
 def main():
     """Executable entrypoint."""
     arguments = cli_arguments.parse_arguments()
-    global_analysis(arguments)
+
+    if arguments.load_session:
+        with open(arguments.load_session, 'rb') as fin:
+            sessions = pickle.load(fin)
+    else:
+        sessions = global_analysis(arguments)
+
+    if arguments.write_session:
+        with open(arguments.write_session, 'wb') as fout:
+            pickle.dump(sessions, fout)
+
+    if not arguments.no_plot:
+        plot_sessions(sessions, arguments)
 
 
 if __name__ == "__main__":
