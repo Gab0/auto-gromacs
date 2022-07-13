@@ -12,7 +12,7 @@ def generate_filename(method: str, identifier: List[str], label: str) -> str:
 
 
 def build_snapshot(us: List[mda.Universe], identifier: List[str], labels: List[str]):
-    resolution_divisor = 10
+    resolution_divisor = 5
 
     pdb_filenames = []
 
