@@ -82,7 +82,7 @@ class AnalysisSession():
             ("pca_series", analyze_pca),
             ("sasa", analyze_sasa),
             ("radgyr", analyze_radgyr),
-            #("secondary", analyze_secondary)
+            ("secondary_structure_n", None)
         ]
 
     def update(self, universe: mda.Universe, simulation_directory):
@@ -99,7 +99,8 @@ class AnalysisSession():
             self.universes.append(universe)
 
         for feature_name, feature_extractor in self.features:
-            self.__dict__[feature_name].append(feature_extractor(universe))
+            if feature_extractor is not None:
+                self.__dict__[feature_name].append(feature_extractor(universe))
 
         secondary_n = analyze_secondary(simulation_directory)
 
@@ -130,6 +131,14 @@ class AnalysisSession():
 
         return stable
 
+    def select_simulation_indexes(self, selected_indexes):
+        for feature_name, _ in self.features:
+            self.__dict__[feature_name] = [
+                self.__dict__[feature_name][idx]
+                for idx in selected_indexes
+            ]
+
+        return False
 
 class SeriesMode(enum.Enum):
     """Different types of series visualisation."""
@@ -369,6 +378,24 @@ def show_universe_information(U: mda.Universe):
     print(f"# Residues: {len(U.residues)}")
 
 
+def session_selector(sessions: List[AnalysisSession]) -> List[AnalysisSession]:
+    """Select simulations for an existing session."""
+
+    session = sessions[0]
+
+    selected = user_input.ask_simulation_prefixes(session.labels)
+
+    selected_indexes = user_input.process_range_descriptors(
+        selected,
+        len(session.labels)
+    )
+
+    for session in sessions:
+        session.select_simulation_indexes(selected_indexes)
+
+    return sessions
+
+
 def global_analysis(arguments):
     """Main pipeline for analysis methods on a trajectory group."""
 
@@ -399,7 +426,7 @@ def global_analysis(arguments):
     ]
 
     if operation_mode.compare_full_timeseries:
-        sessions += [AnalysisSession(False, ["total"], None)]
+        sessions += [AnalysisSession(True, ["total"], None)]
 
     for i, simulation_prefix in enumerate(simulation_prefixes):
         print(
@@ -773,6 +800,7 @@ def main():
     if arguments.load_session:
         with open(arguments.load_session, 'rb') as fin:
             sessions = pickle.load(fin)
+        sessions = session_selector(sessions)
     else:
         sessions = global_analysis(arguments)
 

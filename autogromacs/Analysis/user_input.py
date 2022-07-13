@@ -1,5 +1,7 @@
- 
-def ask_simulation_prefixes(simulation_prefixes):
+from typing import List
+
+
+def ask_simulation_prefixes(simulation_prefixes) -> str:
     print("File prefixes found:")
     for i, prefix in enumerate(simulation_prefixes):
         print(f"{i + 1}:\t" + prefix)
@@ -11,7 +13,7 @@ def ask_simulation_prefixes(simulation_prefixes):
     return input(">")
 
 
-def select_simulation_prefixes(simulation_prefixes, input_string):
+def process_range_descriptors(input_string: str, total_size: int) -> List[int]:
     range_descriptors = [input_string]
     if "," in input_string:
         range_descriptors = [
@@ -19,11 +21,10 @@ def select_simulation_prefixes(simulation_prefixes, input_string):
             for v in input_string.split(",")
         ]
 
-    OutputPrefixes = []
-
     if range_descriptors in [[], ["all"]]:
-        return simulation_prefixes
+        return list(range(total_size))
 
+    selected_indexes = []
     for v in range_descriptors:
         try:
             if "-" in v:
@@ -33,14 +34,19 @@ def select_simulation_prefixes(simulation_prefixes, input_string):
                 V = list(range(F, T + 1))
             else:
                 V = [int(v)]
+            selected_indexes += [idx - 1 for idx in V]
+        except (ValueError, AssertionError) as error:
+            raise Exception("Invalid input.") from error
 
-        except (ValueError, AssertionError):
-            raise Exception("Invalid input.")
+    return selected_indexes
 
-        for prefix_idx in V:
-            OutputPrefixes.append(simulation_prefixes[prefix_idx - 1])
 
-    for prefix in OutputPrefixes:
+def select_simulation_prefixes(simulation_prefixes, input_string) -> List[str]:
+
+    selected_indexes = process_range_descriptors(input_string, len(simulation_prefixes))
+
+    output_prefixes = [simulation_prefixes[idx] for idx in selected_indexes]
+    for prefix in output_prefixes:
         print('\t' + prefix)
 
-    return OutputPrefixes
+    return output_prefixes
