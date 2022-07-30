@@ -1,5 +1,6 @@
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Callable, Any
 
+import itertools
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.units as munits
@@ -14,7 +15,9 @@ def seaborn_theme():
         style="darkgrid",
         rc={
             'axes.facecolor': '#F2F2F2',
-            'figure.facecolor': 'white'
+            'figure.facecolor': 'white',
+            'font.family': 'sans-serif',
+            'font.sans-serif': ['Montserrat', 'Verdana']
         }
     )
 
@@ -29,18 +32,21 @@ def _(_0, _1, _2):
 
 class ModeParameters():
     """Decodes the mode string into various plot parameter sets."""
-    x_label = ""
+    label_time = "Tempo (ns)"
+    x_label = label_time
     y_label = r"$\Delta$ RMSD ($\AA$)"
+    y_label2 = None
+
     enforce_ticks = True
-    make_x = _
+    make_x: Callable[[Any, List[float], Any], List[float]] = _
     moving_average = False
 
-    label_time = "Tempo (ns)"
+    barline = False
 
-    def __init__(self, mode: str):
-
-        if mode == "RMSDt":
-            self.x_label = "Tempo (ns)"
+    def __init__(self, mode: Optional[str]):
+        if mode is None:
+            pass
+        elif mode == "RMSDt":
             self.make_x = self.to_time_x
         elif mode == "RMSDf":
             self.x_label = "Frame"
@@ -50,23 +56,31 @@ class ModeParameters():
         elif mode == "PCA":
             self.x_label = "Componente"
             self.y_label = "Variância Acumulada"
+            self.barline = True
         elif mode == "SASA":
-            self.x_label = self.label_time
             self.y_label = r"SASA ($\AA$²)"
             self.make_x = self.to_time_x
         elif mode == "RADGYR":
             self.x_label = "Frame"
             self.y_label = r"Raio de Giro ($\AA$)"
         elif mode == "NSECONDARY":
-            self.x_label = "Tempo (ns)"
             self.y_label = r"$n$ de Resíduos em Estruturas Secundárias"
             self.make_x = self.to_time_x
             self.moving_average = True
+        elif mode == "ANGLES":
+            self.y_label = "Ângulo entre os domínios"
+            self.make_x = self.to_time_x
+        elif mode == "RMSDANGLES":
+            self.y_label2 = "Ângulo entre os domínios"
+            self.make_x = self.to_time_x
+        elif mode == "RMSDRMSD":
+            self.y_label2 = self.y_label
+            self.make_x = self.to_time_x
         else:
             raise Exception(f"Unknown plot identifier: {mode}.")
 
-    def to_time_x(self, xs, _time):
-        return frames_to_time(xs, _time)
+    def to_time_x(self, x_values, _time):
+        return frames_to_time(x_values, _time)
 
 
 def show_matrix(results, labels, filepath: Union[str, None]):
@@ -221,11 +235,12 @@ def show_rms_series_stacked(
             total_times[i]
         )
         print(Values.ndim)
+
+        plot_initialized = False
         # Plots with three dimensions such as PCA plots;
-        if Values.ndim == 3:
+        if Values.ndim == 3 and mode_parameters.barline:
             colors = ["black", "orange"]
             styles = ["-", "--"]
-            plot_initialized = False
 
             for sY, plot_fn, style, color in zip(Y, stacked_fn, styles, colors):
                 if plot_initialized:
@@ -244,23 +259,53 @@ def show_rms_series_stacked(
 
                 if mode_parameters.enforce_ticks:
                     enforce_ax_ticks(cax, round(min(sY)), round(max(sY)), round(max(sY)))
+
                 plot_initialized = True
 
         # Common 2D plots (lines);
-        elif Values.ndim == 2:
-            axk[i].plot(X, Y, "-", color="black")
-            if mode_parameters.enforce_ticks:
-                tick_interval = determine_tick_interval(Y_MAX, Y_MIN)
-                enforce_ax_ticks(axk[i], Y_MIN, Y_MAX, tick_interval)
-            if mode_parameters.moving_average:
-                moving_average = pd.Series(Y).rolling(10).mean()
-                axk[i].plot(X, moving_average, "-", color="grey", linewidth=1.5)
         else:
-            print(f"Number of dimensions for value: {Values.ndim}")
-            raise Exception(f"Unexpected values shape of {Values.shape}")
+            check_Y = np.array(Y)
+            if check_Y.ndim == 1:
+                Y = check_Y.reshape(1, -1)
 
-        axk[i].set_ylabel(label, fontsize=12)
-        axk[i].yaxis.set_label_position("right")
+            colors = ["black", "dimgrey"]
+
+            for aY, color in zip(Y, colors):
+                print(aY)
+                if plot_initialized:
+                    cax = axk[i].twinx()
+
+                    hide_ax_ticks(cax)
+                else:
+                    cax = axk[i]
+
+                plot_initialized = True
+
+                _X = X
+                if len(X) != len(aY):
+                    _X = adapt_length_x(X, len(aY))
+
+                try:
+                    cax.plot(_X, aY, "-", color=color)
+                except ValueError:
+                    print("aY ERROR!")
+                    cax.plot(_X, aY[0], "-", color=color)
+
+                if mode_parameters.enforce_ticks:
+                    tick_interval = determine_tick_interval(Y_MAX, Y_MIN)
+                    enforce_ax_ticks(cax, Y_MIN, Y_MAX, tick_interval)
+                if mode_parameters.moving_average:
+                    moving_average = pd.Series(aY).rolling(10).mean()
+                    cax.plot(X, moving_average, "-", color="grey", linewidth=1.5)
+            #else:
+            #    print(f"Number of dimensions for value: {Values.ndim}")
+            #    raise Exception(f"Unexpected values shape of {Values.shape}")
+
+        if False:
+            axk[i].set_ylabel(label, fontsize=12)
+            axk[i].yaxis.set_label_position("right")
+        else:
+            axk[i].text(0.1, 0.75, label, fontsize=14, transform=axk[i].transAxes)
 
         axk[i].grid(b=False, axis='x')
         axk[i].tick_params(bottom=False)
@@ -271,18 +316,28 @@ def show_rms_series_stacked(
     # fig.text(0.5, 0.01, XL, ha='center')
     # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
 
+    y_pad = calculate_pad(len(str(Y_MAX)))
+    print(f"Y label pad: {y_pad}")
     hide_ax_ticks(ax)
-    ax.set_xlabel(mode_parameters.x_label, labelpad=0.2)
-    ax.set_ylabel(mode_parameters.y_label, labelpad=13.0)
+    ax.set_xlabel(mode_parameters.x_label, labelpad=0.6)
+    ax.set_ylabel(mode_parameters.y_label, labelpad=y_pad)
+
+    if mode_parameters.y_label2 is not None:
+        ax2 = ax.twinx()
+        ax2.set_ylabel(mode_parameters.y_label2, labelpad=y_pad)
 
     plt.subplots_adjust(hspace=0.03)
     #plt.tight_layout()
     execute_output_plot(filepath)
 
 
+def calculate_pad(n):
+    return n * 4.0
+
+
 def execute_output_plot(filepath: Optional[str]) -> None:
     if filepath is not None:
-        plt.savefig(filepath)
+        plt.savefig(filepath, bbox_inches="tight")
     else:
         plt.show()
 
@@ -295,6 +350,27 @@ def frames_to_time(frames: Union[List[float], List[int]],
         return v / total_frames * total_time
 
     return list(map(to_t, frames))
+
+
+def match_series_sampling(A, B):
+    """
+    Equalize the lengths of two time series,
+    making them proportional along a line graph.
+    """
+    target_length = max([len(k) for k in [A, B]])
+
+    def match_series(s):
+        if len(s) == target_length:
+            return s
+
+    return (match_series(k) for k in (A, B))
+
+
+def adapt_length_x(x, target_length):
+    modifier = target_length / len(x)
+
+    #return [v * modifier for v in x]
+    return list(range(target_length))
 
 
 def write_series(
