@@ -131,14 +131,13 @@ class AnalysisSession():
 
         return stable
 
-    def select_simulation_indexes(self, selected_indexes):
+    def select_simulation_indexes(self, selected_indexes: List[int]) -> None:
         for feature_name, _ in self.features:
             self.__dict__[feature_name] = [
                 self.__dict__[feature_name][idx]
                 for idx in selected_indexes
             ]
 
-        return False
 
 class SeriesMode(enum.Enum):
     """Different types of series visualisation."""
@@ -610,6 +609,7 @@ def plot_series(
     plot(Q, session.pca_series, ["ts", "variance"], "PCA")
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
     plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
+
     print("LOOKING SEC:")
     print(session.secondary_structure_n)
     plot(Q, session.secondary_structure_n, ["ts", "secondary", "strut"], "NSECONDARY")
@@ -793,14 +793,18 @@ def get_best_stable_window(
     return frames[delta_rmsds.index(min(delta_rmsds))]
 
 
+def load_session(session_file) -> List[AnalysisSession]:
+    """Load a previously saved session, which is a pickled file."""
+    with open(session_file, 'rb') as fin:
+        return cast(List[AnalysisSession], pickle.load(fin))
+
+
 def main():
     """Executable entrypoint."""
     arguments = cli_arguments.parse_arguments()
 
     if arguments.load_session:
-        with open(arguments.load_session, 'rb') as fin:
-            sessions = pickle.load(fin)
-        sessions = session_selector(sessions)
+        sessions = session_selector(load_session(arguments.load_session))
     else:
         sessions = global_analysis(arguments)
 
