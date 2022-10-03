@@ -1,12 +1,29 @@
 from typing import List, Union, Optional, Callable, Any
 
-import itertools
 import seaborn as sns
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.units as munits
 
 import numpy as np
 import pandas as pd
+
+# To avoid 'ICE' bugs related with 'Qt' Aggs.
+matplotlib.use("TkAgg")
+
+
+class SingleSimulationPlotInput():
+    timeseries_data: List[float]
+    label: str
+    total_time: float
+    extra_label: str
+
+
+# TODO: Implement this!
+class PlotInputs():
+    """Data inputs for a single multi-simulation plot."""
+    data: List[SingleSimulationPlotInput]
+    filepath: Union[str, None]
 
 
 def seaborn_theme():
@@ -109,7 +126,8 @@ def show_rms_series_monolithic(
         labels: List[str],
         total_times: List[float],
         filepath: Union[str, None],
-        mode: str):
+        mode: str,
+        extra_labels: Optional[List[str]] = None):
 
     fig, ax = plt.subplots()
 
@@ -187,18 +205,24 @@ def show_rms_series_stacked(
         labels: List[str],
         total_times: List[float],
         filepath: Union[str, None],
-        mode: str):
+        mode: str,
+        extra_labels: Optional[List[str]] = None):
+    """
+    Plots timeseries data for multiple structures in multiple axes,
+    where one axis will show data for a single structure.
+    Axes will be vertically stacked.
+    """
 
-    N = len(labels)
+    nstructs = len(labels)
     ncols = 1
-    nrows = round(np.ceil(N / ncols))
+    nrows = round(np.ceil(nstructs / ncols))
 
-    assert ncols * nrows >= N
+    assert ncols * nrows >= nstructs
 
     fig = plt.figure()
 
     V = 6
-    fig.set_figheight(2.5 + V * 0.20 * N)
+    fig.set_figheight(2.5 + V * 0.20 * nstructs)
     fig.set_figwidth(V)
 
     ax = fig.add_subplot(111)
@@ -300,15 +324,20 @@ def show_rms_series_stacked(
                 if mode_parameters.moving_average:
                     moving_average = pd.Series(aY).rolling(10).mean()
                     cax.plot(X, moving_average, "-", color="grey", linewidth=1.5)
+
             #else:
             #    print(f"Number of dimensions for value: {Values.ndim}")
             #    raise Exception(f"Unexpected values shape of {Values.shape}")
 
-        if False:
+        if True:
             axk[i].set_ylabel(label, fontsize=12)
             axk[i].yaxis.set_label_position("right")
         else:
             axk[i].text(0.1, 0.75, label, fontsize=14, transform=axk[i].transAxes)
+
+        if extra_labels is not None:
+            txt = axk[i].text(0.1, 0.75, extra_labels[i], fontsize=14, transform=axk[i].transAxes)
+            txt.set_alpha(0.4)
 
         axk[i].grid(b=False, axis='x')
         axk[i].tick_params(bottom=False)
@@ -319,7 +348,7 @@ def show_rms_series_stacked(
     # fig.text(0.5, 0.01, XL, ha='center')
     # fig.text(0.00, 0.5, YL, va='center', rotation='vertical')
 
-    y_pad = calculate_pad(len(str(Y_MAX)))
+    y_pad = calculate_pad(len(str(int(Y_MAX))))
     print(f"Y label pad: {y_pad}")
     hide_ax_ticks(ax)
     ax.set_xlabel(mode_parameters.x_label, labelpad=0.6)
@@ -334,8 +363,12 @@ def show_rms_series_stacked(
     execute_output_plot(filepath)
 
 
-def calculate_pad(n):
-    return n * 4.0
+def calculate_pad(number: int) -> float:
+    """
+    Calculates padding for the X axis label,
+    which indicates the X axis' name.
+    """
+    return number ** 1.9
 
 
 def execute_output_plot(filepath: Optional[str]) -> None:
