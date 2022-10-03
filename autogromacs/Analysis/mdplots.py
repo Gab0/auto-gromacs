@@ -264,6 +264,9 @@ def show_rms_series_stacked(
 
         # Common 2D plots (lines);
         else:
+            # Ensure correct shape for Y values,
+            # considering the initial Y may have 2D or 3D data (with multiple lines per axis).
+            # FIXME: Yeah this whole operation is confusing.
             check_Y = np.array(Y)
             if check_Y.ndim == 1:
                 Y = check_Y.reshape(1, -1)

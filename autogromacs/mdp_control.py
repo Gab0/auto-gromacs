@@ -79,6 +79,10 @@ def compact_parameter_list(parameters):
 
 
 def load_mdp(self, arguments, mdpname):
+    """
+    Load a MDP config file, swap some variables,
+    then and write the modified contents to the same filepath.
+    """
 
     mdp_identifier = mdpname.split(".")[0]
     overrides = load_mdp_overrides_from_options(

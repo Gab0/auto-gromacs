@@ -67,7 +67,7 @@ def parse_arguments():
     parser.add_argument(
         "--dummy",
         action="store_true",
-        help="Do not run simulations (for debugging)."
+        help="Do not run simulations (dry run)."
     )
 
     parser.add_argument(
