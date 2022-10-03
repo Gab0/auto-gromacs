@@ -6,6 +6,7 @@ import os
 import warnings
 import pickle
 
+import Bio.PDB.Polypeptide as polyp
 import freesasa
 import numpy as np
 
@@ -18,8 +19,10 @@ from MDAnalysis.analysis.dihedrals import Ramachandran
 
 from . import cli_arguments, mdplots, user_input
 from . import crosscorr, dimension_reduction, superposition
+from . import mutation_labels
 
 from antigen_protocol.Mutation import structure_name
+from antigen_protocol.ProteinSequence import Antigens
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -36,7 +39,7 @@ class Positions():
 
     def make_label(self):
         return "_".join([
-            clean_universe_prefix(self.universe_name),
+            mutation_labels.clean_universe_prefix(self.universe_name),
             index_label(self.traj_idx)
         ])
 
@@ -57,12 +60,13 @@ class AnalysisSession():
     radgyr: List[List[float]]
     snapshots: List[np.ndarray]
     secondary_structure_n: List[List[float]]
+    sequences: List[str]
 
-    def __init__(self, store_universe, plot_suffix, sample_pct):
+    def __init__(self, store_universe, plot_suffix, sample_pct, selector=None):
         self.store_universe = store_universe
         self.plot_suffix = plot_suffix
         self.sample_pct = sample_pct
-
+        self.selector = selector
         self.universes = []
 
         self.secondary_structure_n = []
@@ -74,7 +78,7 @@ class AnalysisSession():
     def features(self):
         """Declare all the features that can be extracted from"""
         return [
-            ("labels", get_label),
+            ("labels", mutation_labels.get_label),
             # Total times in nanoseconds;
             ("total_times", lambda u: u.trajectory.totaltime / 1000),
             ("rmsd_series", time_series_rmsd),
@@ -82,7 +86,8 @@ class AnalysisSession():
             ("pca_series", analyze_pca),
             ("sasa", analyze_sasa),
             ("radgyr", analyze_radgyr),
-            ("secondary_structure_n", None)
+            ("secondary_structure_n", None),
+            ("sequences", structure_sequence)
         ]
 
     def update(self, universe: mda.Universe, simulation_directory):
@@ -98,9 +103,16 @@ class AnalysisSession():
         if self.store_universe:
             self.universes.append(universe)
 
+        selector = STANDARD_SELECTION
+        if self.selector is not None:
+            selector += " and " + self.selector
         for feature_name, feature_extractor in self.features:
             if feature_extractor is not None:
-                self.__dict__[feature_name].append(feature_extractor(universe))
+                if "selector" in feature_extractor.__code__.co_varnames:
+                    feature = feature_extractor(universe, selector)
+                else:
+                    feature = feature_extractor(universe)
+                self.__dict__[feature_name].append(feature)
 
         secondary_n = analyze_secondary(simulation_directory)
 
@@ -152,6 +164,7 @@ class OperationMode():
     """
     compare_pairwise = True
     compare_full_timeseries = True
+    compare_short_timeseries = False
     compare_samples = True
 
     def __init__(self, arguments):
@@ -205,32 +218,6 @@ def index_label(label_id: int) -> str:
         return common[label_id]
     except KeyError:
         return str(label_id)
-
-
-def clean_universe_prefix(p: str) -> str:
-    try:
-        p = p.split("/")[-2]
-    except IndexError:
-        pass
-
-    p = p.replace("work", "")
-    p = p.strip("_")
-
-    return p
-
-
-def get_label(u: mda.Universe) -> str:
-    """Extract a label to identify a single universe."""
-    A = clean_universe_prefix(u.filename)
-
-    if False:
-        t = u.trajectory.totaltime
-        T = "t=%.2fns" % (t / 1000)
-        return A + " " + T
-
-    else:
-        return structure_name.process_simulation_name(A)
-
 
 def extract_positions(universe: mda.Universe, sel=STANDARD_SELECTION):
     """ Extract trajectory atomic position vectors from a Universe."""
@@ -377,12 +364,14 @@ def show_universe_information(U: mda.Universe):
     print(f"# Residues: {len(U.residues)}")
 
 
-def session_selector(sessions: List[AnalysisSession]) -> List[AnalysisSession]:
+def session_selector(arguments, sessions: List[AnalysisSession]) -> List[AnalysisSession]:
     """Select simulations for an existing session."""
 
     session = sessions[0]
 
-    selected = user_input.ask_simulation_prefixes(session.labels)
+    selected = arguments.SimulationSelection
+    if not selected:
+        selected = user_input.ask_simulation_prefixes(session.labels)
 
     selected_indexes = user_input.process_range_descriptors(
         selected,
@@ -391,6 +380,28 @@ def session_selector(sessions: List[AnalysisSession]) -> List[AnalysisSession]:
 
     for session in sessions:
         session.select_simulation_indexes(selected_indexes)
+
+    return sessions
+
+
+def determine_sessions(operation_mode: OperationMode) -> List[AnalysisSession]:
+    sessions = []
+
+    if operation_mode.compare_short_timeseries:
+        sessions += [
+            AnalysisSession(True, ["short-sample-080"], (0.8, 0.85)),
+            AnalysisSession(True, ["short-sample-085"], (0.85, 0.9)),
+            AnalysisSession(True, ["short-sample-090"], (0.9, 0.95)),
+            AnalysisSession(True, ["short-sample-best"], (1.0, 1.0))
+        ]
+
+    if operation_mode.compare_full_timeseries:
+        sessions += [
+            #AnalysisSession(True, ["total"], None),
+            # RESID 129 divides the two domains in SRS29B;
+            AnalysisSession(True, ["total", "A"], None, selector="resid 1:129"),
+            AnalysisSession(True, ["total", "B"], None, selector="resid 129:3000")
+       ]
 
     return sessions
 
@@ -413,19 +424,13 @@ def global_analysis(arguments):
 
     operation_mode = OperationMode(arguments)
 
+    sessions = determine_sessions(operation_mode)
+
     print("Data loading done.")
 
     print("Processing timeseries RMSD plots.")
 
-    sessions = [
-        AnalysisSession(True, ["short-sample-080"], (0.8, 0.85)),
-        AnalysisSession(True, ["short-sample-085"], (0.85, 0.9)),
-        AnalysisSession(True, ["short-sample-090"], (0.9, 0.95)),
-        #AnalysisSession(True, ["short-sample-best"], (1.0, 1.0))
-    ]
 
-    if operation_mode.compare_full_timeseries:
-        sessions += [AnalysisSession(True, ["total"], None)]
 
     for i, simulation_prefix in enumerate(simulation_prefixes):
         print(
@@ -468,6 +473,8 @@ def plot_sessions(sessions, arguments):
     """Plot routines for all gathered data."""
 
     operation_mode = OperationMode(arguments)
+
+    # FIXME: This 'argument' is a bool.
     base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
 
     for session in sessions:
@@ -586,6 +593,22 @@ def plot_series(
 
     Q = series_qualifiers[series_mode]
 
+    # Create extra labels for all structures.
+    extra_labels = None
+    if arguments.reference_structure:
+        mutation_vectors = [
+            Antigens.CreateMutationVector(arguments.reference_structure, seq, session.labels)
+            for seq in session.sequences
+        ]
+        session_mutations = [
+            [mut for mut in mutation_vector if mut]
+            for mutation_vector in mutation_vectors
+        ]
+        extra_labels = [
+            " ".join([mut.show_mutations()[0] for mut in session_muts])
+            for session_muts in session_mutations
+        ]
+
     def plot(Q, data, name_segments, mode):
         try:
             Q["function"](
@@ -596,11 +619,12 @@ def plot_series(
                     base_filepath,
                     name_segments + Q["name_appendix"] + extra_identifier,
                     arguments),
-                mode
+                mode,
+                extra_labels
             )
-        except ValueError as e:
+        except ValueError as exception:
             print(f"Could not create {mode} plots for {extra_identifier}")
-            print(e)
+            print(exception)
 
     # for feature, _, plot in session.plotable_features:
     #     plot(Q, session.getattr(feature),)
@@ -610,7 +634,6 @@ def plot_series(
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
     plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
 
-    print("LOOKING SEC:")
     print(session.secondary_structure_n)
     plot(Q, session.secondary_structure_n, ["ts", "secondary", "strut"], "NSECONDARY")
 
@@ -675,17 +698,23 @@ def align_universe(u: mda.Universe,
     return u
 
 
-def time_series_rmsd(universe: mda.Universe, verbose=False) -> List[float]:
+def structure_sequence(universe: mda.Universe) -> str:
+    res = universe.residues
+    res_arr = [polyp.three_to_one(r.resname) for r in res if r.resname != "SOL"]
+    return "".join(res_arr)
+
+
+def time_series_rmsd(universe: mda.Universe, selector: str, verbose=False) -> List[float]:
     """Extracts the timeseries RMSD from a Universe."""
 
     rmsds = []
 
     total_length = len(universe.trajectory)
-    atoms = universe.select_atoms(STANDARD_SELECTION)
 
-    u = align_universe(universe, AlignType.FIRST_FRAME)
-    ref = AlignType.FIRST_FRAME.extract(extract_positions(u)).reshape(-1, 3)
-    for frame_idx, _ in enumerate(u.trajectory):
+    aligned_universe = align_universe(universe, AlignType.FIRST_FRAME, sel=selector)
+    atoms = aligned_universe.select_atoms(selector)
+    ref = AlignType.FIRST_FRAME.extract(extract_positions(aligned_universe)).reshape(-1, 3)
+    for frame_idx, _ in enumerate(aligned_universe.trajectory):
         if verbose:
             print(f"{frame_idx} of {total_length}")
 
@@ -804,7 +833,7 @@ def main():
     arguments = cli_arguments.parse_arguments()
 
     if arguments.load_session:
-        sessions = session_selector(load_session(arguments.load_session))
+        sessions = load_session(arguments.load_session)
     else:
         sessions = global_analysis(arguments)
 
@@ -812,6 +841,7 @@ def main():
         with open(arguments.write_session, 'wb') as fout:
             pickle.dump(sessions, fout)
 
+    sessions = session_selector(arguments, sessions)
     if not arguments.no_plot:
         plot_sessions(sessions, arguments)
 

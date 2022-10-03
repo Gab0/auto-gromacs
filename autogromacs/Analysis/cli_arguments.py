@@ -95,4 +95,10 @@ def parse_arguments():
         help="When TRUE it will NOT create plots."
     )
 
+    parser.add_argument(
+        '--reference-structure',
+        help="Path to reference .pdb structure to derive mutations from.\n" +
+        "This allows the display of structure-specific mutations in output plots."
+    )
+
     return parser.parse_args()
