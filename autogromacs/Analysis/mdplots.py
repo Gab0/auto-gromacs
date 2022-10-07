@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 # To avoid 'ICE' bugs related with 'Qt' Aggs.
-matplotlib.use("TkAgg")
+matplotlib.use("AGG")
 
 
 class SingleSimulationPlotInput():
