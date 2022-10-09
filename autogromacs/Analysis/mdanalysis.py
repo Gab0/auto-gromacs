@@ -210,6 +210,7 @@ def autodetect_files(root_path, pattern="md.gro") -> List[str]:
 
 
 def index_label(label_id: int) -> str:
+    """"""
     common = {
         0: "initial",
         -1: "last"
@@ -218,6 +219,7 @@ def index_label(label_id: int) -> str:
         return common[label_id]
     except KeyError:
         return str(label_id)
+
 
 def extract_positions(universe: mda.Universe, sel=STANDARD_SELECTION):
     """ Extract trajectory atomic position vectors from a Universe."""
@@ -385,7 +387,7 @@ def session_selector(arguments, sessions: List[AnalysisSession]) -> List[Analysi
 
 
 def determine_sessions(operation_mode: OperationMode) -> List[AnalysisSession]:
-    sessions = []
+    sessions = [AnalysisSession(False, ["total"], None)]
 
     if operation_mode.compare_short_timeseries:
         sessions += [
@@ -397,10 +399,9 @@ def determine_sessions(operation_mode: OperationMode) -> List[AnalysisSession]:
 
     if operation_mode.compare_full_timeseries:
         sessions += [
-            #AnalysisSession(True, ["total"], None),
             # RESID 129 divides the two domains in SRS29B;
-            AnalysisSession(True, ["total", "A"], None, selector="resid 1:129"),
-            AnalysisSession(True, ["total", "B"], None, selector="resid 129:3000")
+            #AnalysisSession(True, ["total", "A"], None, selector="resid 1:129"),
+            #AnalysisSession(True, ["total", "B"], None, selector="resid 129:3000")
        ]
 
     return sessions
@@ -429,8 +430,6 @@ def global_analysis(arguments):
     print("Data loading done.")
 
     print("Processing timeseries RMSD plots.")
-
-
 
     for i, simulation_prefix in enumerate(simulation_prefixes):
         print(
@@ -713,10 +712,14 @@ def time_series_rmsd(universe: mda.Universe, selector: str, verbose=False) -> Li
 
     aligned_universe = align_universe(universe, AlignType.FIRST_FRAME, sel=selector)
     atoms = aligned_universe.select_atoms(selector)
-    ref = AlignType.FIRST_FRAME.extract(extract_positions(aligned_universe)).reshape(-1, 3)
+    ref = AlignType.FIRST_FRAME.extract(extract_positions(aligned_universe, sel=selector)).reshape(-1, 3)
     for frame_idx, _ in enumerate(aligned_universe.trajectory):
         if verbose:
             print(f"{frame_idx} of {total_length}")
+            if not frame_idx:
+                print("RMSD shapes:")
+                print(ref.shape)
+                print(atoms.positions.shape)
 
         frame_rmsd = rms.rmsd(ref, atoms.positions)
         rmsds.append(frame_rmsd)
