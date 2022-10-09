@@ -698,9 +698,14 @@ def align_universe(u: mda.Universe,
 
 
 def structure_sequence(universe: mda.Universe) -> str:
-    res = universe.residues
-    res_arr = [polyp.three_to_one(r.resname) for r in res if r.resname != "SOL"]
-    return "".join(res_arr)
+    protein_string = ""
+    for res in universe.residues:
+        try:
+            protein_string += polyp.three_to_one(res.resname)
+        except KeyError:
+            continue
+
+    return protein_string
 
 
 def time_series_rmsd(universe: mda.Universe, selector: str, verbose=False) -> List[float]:
