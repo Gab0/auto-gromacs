@@ -75,11 +75,11 @@ def calculate_multithread_parameters(arguments):
     """ Calculate multithreading parameters. """
     ncores = os.cpu_count() / 2
 
+    max_omp = 4
     if arguments.ntomp:
         ntomp = arguments.ntomp
     else:
         ntomp = os.getenv("OMP_NUM_THREADS")
-        max_omp = 4
 
     if not ntomp:
         ntomp = min(max_omp, ncores)
@@ -910,16 +910,20 @@ def get_gpu_arguments(use_gpu, is_hpc, custom_offload: str = "") -> List[str]:
     while also considering usual HPC constraints
     which were tested with NVIDIA Volta video cards.
     """
+    known_flags = ["pme", "pmefft", "bonded", "update", "nb"]
 
-    if custom_offload:
+    def set_flags(flags: [str], target: str) -> List[str]:
         _command = [
-            [f"-{flag.strip()}", "gpu"]
-            for flag in filter(None, custom_offload.split(","))
+            [f"-{flag.strip()}", target]
+            for flag in flags
         ]
         return list(itertools.chain.from_iterable(_command))
 
+    if custom_offload:
+        return set_flags(list(filter(None, custom_offload.split(","))), "gpu")
+
     if not use_gpu:
-        return []
+        return set_flags(known_flags, "cpu")
 
     command = [
             "-nb", "gpu",
@@ -1045,7 +1049,7 @@ def run_pipeline(arguments):
 
     require_pdb = False
     if Action == SessionAction.RESUME:
-        steps = STEPS_RESUME + STEPS_POSTPROCESS
+        steps = STEPS_RESUME + STEPS_POSTPROCESS + STEPS_ANALYSIS
 
     elif Action == SessionAction.NOTHING:
         print(f"""Nothing to do for working directory {arguments.working_dir}:
@@ -1067,7 +1071,8 @@ def run_pipeline(arguments):
         steps = STEPS_GATHER + \
             STEPS_PREPARE + \
             STEPS_EXECUTE + \
-            STEPS_POSTPROCESS
+            STEPS_POSTPROCESS + \
+            STEPS_ANALYSIS
 
     if require_pdb:
         if not pipeline.protein_file_path:
