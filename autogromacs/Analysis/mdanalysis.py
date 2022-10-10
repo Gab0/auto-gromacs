@@ -83,7 +83,7 @@ class AnalysisSession():
             ("total_times", lambda u: u.trajectory.totaltime / 1000),
             ("rmsd_series", time_series_rmsd),
             ("rmsf_series", time_series_rmsf),
-            ("pca_series", analyze_pca),
+            #("pca_series", analyze_pca),
             ("sasa", analyze_sasa),
             ("radgyr", analyze_radgyr),
             ("secondary_structure_n", None),
