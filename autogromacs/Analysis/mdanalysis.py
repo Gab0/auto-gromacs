@@ -806,7 +806,12 @@ def analyze_secondary(simulation_directory: str) -> List[float]:
     """
     xvg = os.path.join(simulation_directory, "scount.xvg")
     structs = np.loadtxt(xvg, comments=["@", "#"], unpack=True)
-    structural = structs[1]
+
+    if isinstance(structs[1], List):
+        structural = structs[1]
+    else:
+        structural = structs
+
     return cast(List[float], structural)
 
 
