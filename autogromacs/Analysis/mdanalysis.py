@@ -106,6 +106,7 @@ class AnalysisSession():
         selector = STANDARD_SELECTION
         if self.selector is not None:
             selector += " and " + self.selector
+
         for feature_name, feature_extractor in self.features:
             if feature_extractor is not None:
                 if "selector" in feature_extractor.__code__.co_varnames:
@@ -120,6 +121,7 @@ class AnalysisSession():
         print(secondary_n)
 
         (sf, st) = slice_to_indexes(self.sample_pct, len(secondary_n))
+
         secondary_n_output = secondary_n[sf:st]
         print("N OUT")
         print(secondary_n_output)
@@ -144,6 +146,10 @@ class AnalysisSession():
         return stable
 
     def select_simulation_indexes(self, selected_indexes: List[int]) -> None:
+        """
+        Select the subset of stored data that
+        corresponds to a given simulation index set.
+        """
         for feature_name, _ in self.features:
             self.__dict__[feature_name] = [
                 self.__dict__[feature_name][idx]
@@ -621,15 +627,15 @@ def plot_series(
                 mode,
                 extra_labels
             )
-        except ValueError as exception:
+        except Exception as exception:
             print(f"Could not create {mode} plots for {extra_identifier}")
-            print(exception)
+            print(f"Reason: {exception}\n")
 
     # for feature, _, plot in session.plotable_features:
     #     plot(Q, session.getattr(feature),)
     plot(Q, session.rmsd_series, ["ts", "rmsd"], "RMSDt")
     plot(Q, session.rmsf_series, ["ts", "rmsf"], "RMSF")
-    plot(Q, session.pca_series, ["ts", "variance"], "PCA")
+    #plot(Q, session.pca_series, ["ts", "variance"], "PCA")
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
     plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
 
