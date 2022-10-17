@@ -336,8 +336,14 @@ def show_rms_series_stacked(
             axk[i].text(0.1, 0.75, label, fontsize=14, transform=axk[i].transAxes)
 
         if extra_labels is not None:
-            txt = axk[i].text(0.1, 0.75, extra_labels[i], fontsize=14, transform=axk[i].transAxes)
-            txt.set_alpha(0.4)
+            contents = extra_labels[i]
+            if contents:
+                #txt = axk[i].text(0.1, 0.75, extra_labels[i], fontsize=14, transform=axk[i].transAxes)
+                #txt.set_alpha(0.4)
+                # Create an empty plot with the required text.
+                axk[i].plot([], label=contents)
+                # Remove the handle from the legend box.
+                axk[i].legend(handlelength=0, frameon=False, borderpad=0.1)
 
         axk[i].grid(b=False, axis='x')
         axk[i].tick_params(bottom=False)
