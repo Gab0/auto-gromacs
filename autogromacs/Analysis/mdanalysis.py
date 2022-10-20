@@ -23,6 +23,7 @@ from . import mutation_labels
 
 from antigen_protocol.Mutation import structure_name
 from antigen_protocol.ProteinSequence import Antigens
+from antigen_protocol.StructureUtils import BasicStructureOperations as BSO
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -578,6 +579,42 @@ def plot_rmsd_matrices(arguments, base_filepath, session):
     )
 
 
+def load_mutation_labels(session, reference_structure_path: Optional[str]) -> Optional[List[str]]:
+
+    if reference_structure_path is None:
+        return None
+
+    reference_sequence = BSO.read_structure_sequence(reference_structure_path)
+
+    print("Loaded reference sequence:")
+    print(reference_sequence)
+    # assert session.sequences[0] != session.sequences[1]
+
+    mutation_vectors = [
+        Antigens.CreateMutationVector(
+            [seq],
+            reference_sequence,
+            [label]
+        )
+        for seq, label in zip(session.sequences, session.labels)
+    ]
+
+    for mv in mutation_vectors:
+        print(f">{[m for m in mv if m]}")
+
+    session_mutations = [
+        [mut for mut in mutation_vector if mut]
+        for mutation_vector in mutation_vectors
+    ]
+
+    extra_labels = [
+        " ".join([mut.show_mutations()[0] for mut in session_muts])
+        for session_muts in session_mutations
+    ]
+
+    return extra_labels
+
+
 def plot_series(
         arguments,
         base_filepath,
@@ -599,20 +636,8 @@ def plot_series(
     Q = series_qualifiers[series_mode]
 
     # Create extra labels for all structures.
-    extra_labels = None
-    if arguments.reference_structure:
-        mutation_vectors = [
-            Antigens.CreateMutationVector(arguments.reference_structure, seq, session.labels)
-            for seq in session.sequences
-        ]
-        session_mutations = [
-            [mut for mut in mutation_vector if mut]
-            for mutation_vector in mutation_vectors
-        ]
-        extra_labels = [
-            " ".join([mut.show_mutations()[0] for mut in session_muts])
-            for session_muts in session_mutations
-        ]
+    extra_labels = load_mutation_labels(session, arguments.reference_structure)
+
 
     def plot(Q, data, name_segments, mode):
         try:
@@ -715,7 +740,7 @@ def structure_sequence(universe: mda.Universe) -> str:
 
 
 def time_series_rmsd(universe: mda.Universe, selector: str, verbose=False) -> List[float]:
-    """Extracts the timeseries RMSD from a Universe."""
+    """Extracts the RMSD timeseries from a Universe."""
 
     rmsds = []
 
