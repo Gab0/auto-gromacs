@@ -135,7 +135,7 @@ class AnalysisSession():
             if isinstance(value, list):
                 print(len(value))
 
-    def check_stable(self) -> bool:
+    def check_trajectory_stability(self) -> bool:
         """Checks if all stored trajectory fragments are stable."""
         stable = True
         for label, rmsd_traj in zip(self.labels, self.rmsd_series):
@@ -394,21 +394,21 @@ def session_selector(arguments, sessions: List[AnalysisSession]) -> List[Analysi
 
 
 def determine_sessions(operation_mode: OperationMode) -> List[AnalysisSession]:
-    sessions = [AnalysisSession(False, ["total"], None)]
+    sessions = [AnalysisSession(True, ["total"], None)]
 
     if operation_mode.compare_short_timeseries:
         sessions += [
-            AnalysisSession(True, ["short-sample-080"], (0.8, 0.85)),
-            AnalysisSession(True, ["short-sample-085"], (0.85, 0.9)),
-            AnalysisSession(True, ["short-sample-090"], (0.9, 0.95)),
-            AnalysisSession(True, ["short-sample-best"], (1.0, 1.0))
+            #AnalysisSession(True, ["short-sample-080"], (0.8, 0.85)),
+            #AnalysisSession(True, ["short-sample-085"], (0.85, 0.9)),
+            #AnalysisSession(True, ["short-sample-090"], (0.9, 0.95)),
+            #AnalysisSession(True, ["short-sample-best"], (1.0, 1.0))
         ]
 
     if operation_mode.compare_full_timeseries:
         sessions += [
             # RESID 129 divides the two domains in SRS29B;
-            #AnalysisSession(True, ["total", "A"], None, selector="resid 1:129"),
-            #AnalysisSession(True, ["total", "B"], None, selector="resid 129:3000")
+            AnalysisSession(True, ["total", "A"], None, selector="resid 1:129"),
+            AnalysisSession(True, ["total", "B"], None, selector="resid 129:3000")
        ]
 
     return sessions
@@ -454,7 +454,7 @@ def global_analysis(arguments):
                 print("Building snapshot...")
                 superposition.build_snapshot(
                     session.universes,
-                    session.plot_suffix,
+                    [arguments.OutputIdentifier] + session.plot_suffix,
                     session.labels
                 )
                 for _universe in session.universes:
@@ -484,7 +484,7 @@ def plot_sessions(sessions, arguments):
     base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
 
     for session in sessions:
-        session.check_stable()
+        session.check_trajectory_stability()
 
         plot_series(
             arguments,
