@@ -46,14 +46,6 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "-w",
-        "--write",
-        dest='WriteOutput',
-        action="store_true",
-        help=""
-    )
-
-    parser.add_argument(
         "-i",
         "--identifier",
         dest='OutputIdentifier',

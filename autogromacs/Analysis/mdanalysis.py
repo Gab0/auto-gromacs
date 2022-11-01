@@ -329,21 +329,23 @@ def build_filepath(
         specifiers: List[str],
         arguments) -> Optional[str]:
 
-    if arguments.WriteOutput:
-        if arguments.AutoDetect:
-            base = arguments.AutoDetect[0]
-            if arguments.FilePrefix:
-                base += "+"
-        else:
-            base = "analysis"
+    if arguments.no_plot:
+        return None
 
-        ID = arguments.OutputIdentifier
-        if ID:
-            specifiers.append(ID)
+    if arguments.AutoDetect:
+        base = arguments.AutoDetect[0]
+        if arguments.FilePrefix:
+            base += "+"
+    else:
+        base = "analysis"
 
-        return concat_filepath(specifiers)
+    ID = arguments.OutputIdentifier
+    if ID:
+        specifiers.append(ID)
 
-    return None
+    return concat_filepath(specifiers)
+
+
 
 
 def load_universe(simulation_prefix, traj_suffix):
@@ -480,8 +482,8 @@ def plot_sessions(sessions, arguments):
 
     operation_mode = OperationMode(arguments)
 
-    # FIXME: This 'argument' is a bool.
-    base_filepath = arguments.WriteOutput if arguments.WriteOutput else ""
+    # TODO: Source this from an argument?
+    base_filepath = ""
 
     for session in sessions:
         session.check_trajectory_stability()
