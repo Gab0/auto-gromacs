@@ -78,7 +78,7 @@ class ModeParameters():
             self.y_label = r"SASA ($\AA$²)"
             self.make_x = self.to_time_x
         elif mode == "RADGYR":
-            self.x_label = "Frame"
+            self.make_x = self.to_time_x
             self.y_label = r"Raio de Giro ($\AA$)"
         elif mode == "NSECONDARY":
             self.y_label = r"$n$ de Resíduos em Estruturas Secundárias"
