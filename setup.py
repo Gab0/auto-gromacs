@@ -6,11 +6,12 @@ from setuptools import setup
 
 setup(
     name='autogromacs',
-    version='0.6',
+    version='0.8',
     packages=[
         'autogromacs.core',
         'autogromacs',
-        'autogromacs.Analysis'
+        'autogromacs.Analysis',
+        'autogromacs.Analysis.Features'
     ],
     platforms='any',
     license="MIT",
