@@ -14,11 +14,14 @@ def ask_simulation_prefixes(simulation_prefixes) -> str:
 
 
 def process_range_descriptors(input_string: str, total_size: int) -> List[int]:
+    sector_splitter = ";"
+    range_splitter = "-"
+
     range_descriptors = [input_string]
-    if "," in input_string:
+    if sector_splitter in input_string:
         range_descriptors = [
             v.strip()
-            for v in input_string.split(",")
+            for v in input_string.split(sector_splitter)
         ]
 
     if range_descriptors in [[], ["all"]]:
@@ -27,8 +30,8 @@ def process_range_descriptors(input_string: str, total_size: int) -> List[int]:
     selected_indexes = []
     for v in range_descriptors:
         try:
-            if "-" in v:
-                limits = v.split("-")
+            if range_splitter in v:
+                limits = v.split(range_splitter)
                 assert len(limits) == 2
                 F, T = [int(k) for k in limits]
                 V = list(range(F, T + 1))
