@@ -1,4 +1,4 @@
-from typing import List, Optional, cast, Tuple
+from typing import List, Optional, cast, Tuple, Any
 
 import enum
 import sys
@@ -15,19 +15,19 @@ from sklearn.preprocessing import normalize
 import MDAnalysis as mda
 from MDAnalysis.analysis import align, rms, pca, psa
 
-from MDAnalysis.analysis.dihedrals import Ramachandran
 
 from . import cli_arguments, mdplots, user_input
 from . import crosscorr, dimension_reduction, superposition
 from . import mutation_labels
+
+from . import Features
+from .constants import STANDARD_SELECTION
 
 from antigen_protocol.Mutation import structure_name
 from antigen_protocol.ProteinSequence import Antigens
 from antigen_protocol.StructureUtils import BasicStructureOperations as BSO
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-STANDARD_SELECTION = "protein and name CA"
 
 
 class Positions():
@@ -62,6 +62,7 @@ class AnalysisSession():
     snapshots: List[np.ndarray]
     secondary_structure_n: List[List[float]]
     sequences: List[str]
+    rama: List[Any]
 
     def __init__(self, store_universe, plot_suffix, sample_pct, selector=None):
         self.store_universe = store_universe
@@ -88,7 +89,8 @@ class AnalysisSession():
             ("sasa", analyze_sasa),
             ("radgyr", analyze_radgyr),
             ("secondary_structure_n", None),
-            ("sequences", structure_sequence)
+            ("sequences", structure_sequence),
+            ("ramachandran", Features.ramachandran.analyze)
         ]
 
     def update(self, universe: mda.Universe, simulation_directory):
@@ -346,8 +348,6 @@ def build_filepath(
     return concat_filepath(specifiers)
 
 
-
-
 def load_universe(simulation_prefix, traj_suffix):
 
     universe = mda.Universe(
@@ -410,7 +410,7 @@ def determine_sessions(operation_mode: OperationMode) -> List[AnalysisSession]:
         sessions += [
             # RESID 129 divides the two domains in SRS29B;
             AnalysisSession(True, ["total", "A"], None, selector="resid 1:129"),
-            AnalysisSession(True, ["total", "B"], None, selector="resid 129:3000")
+            AnalysisSession(True, ["total", "B"], None, selector="resid 129:1000")
        ]
 
     return sessions
@@ -508,14 +508,14 @@ def plot_sessions(sessions, arguments):
             if session.universes:
                 plot_rmsd_matrices(arguments, base_filepath, session)
 
-        for universe, label in zip(session.universes, session.labels):
+        for i, (universe, label) in enumerate(zip(session.universes, session.labels)):
             crosscorr.trajectory_cross_correlation(
                 universe,
                 build_filepath(base_filepath, ["cross-corr", label], arguments)
             )
 
-            ramachandran(
-                universe,
+            Features.ramachandran.plot(
+                universe.ramachandran[i],
                 label,
                 build_filepath(base_filepath, ["rama", label], arguments)
             )
@@ -542,16 +542,6 @@ def plot_umap(session: AnalysisSession, arguments, base_filepath: str):
         print("UMAP failure!")
         print(e)
 
-
-def ramachandran(u: mda.Universe, label: str, output_filepath: str):
-
-    sel = u.select_atoms(STANDARD_SELECTION)
-    R = Ramachandran(sel).run()
-    mdplots.plot_ramachandran(
-        R,
-        label,
-        output_filepath
-    )
 
 
 def plot_rmsd_matrices(arguments, base_filepath, session):
@@ -588,8 +578,8 @@ def load_mutation_labels(session, reference_structure_path: Optional[str]) -> Op
 
     reference_sequence = BSO.read_structure_sequence(reference_structure_path)
 
-    print("Loaded reference sequence:")
-    print(reference_sequence)
+    # print("Loaded reference sequence:")
+    # print(reference_sequence)
     # assert session.sequences[0] != session.sequences[1]
 
     mutation_vectors = [
@@ -601,8 +591,8 @@ def load_mutation_labels(session, reference_structure_path: Optional[str]) -> Op
         for seq, label in zip(session.sequences, session.labels)
     ]
 
-    for mv in mutation_vectors:
-        print(f">{[m for m in mv if m]}")
+    # for mv in mutation_vectors:
+    #     print(f">{[m for m in mv if m]}")
 
     session_mutations = [
         [mut for mut in mutation_vector if mut]
@@ -640,7 +630,6 @@ def plot_series(
     # Create extra labels for all structures.
     extra_labels = load_mutation_labels(session, arguments.reference_structure)
 
-
     def plot(Q, data, name_segments, mode):
         try:
             Q["function"](
@@ -666,10 +655,13 @@ def plot_series(
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
     plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
 
-    # Process and plot 'secondary struct n' data structures.
-    sec_struct = session.secondary_structure_n
-    # print(f"Secondary structure data shape: {identify_list_object(sec_struct)}")
-    plot(Q, analyze_secondary_structs(sec_struct), ["ts", "secondary", "strut"], "NSECONDARY")
+    try:
+        # Process and plot 'secondary struct n' data structures.
+        sec_struct = session.secondary_structure_n
+        # print(f"Secondary structure data shape: {identify_list_object(sec_struct)}")
+        plot(Q, analyze_secondary_structs(sec_struct), ["ts", "secondary", "strut"], "NSECONDARY")
+    except IndexError:
+        print("Error when transforming 'secondary structure n' plots")
 
 
 def analyze_secondary_structs(obj):
@@ -868,8 +860,8 @@ def analyze_secondary(simulation_directory: str) -> List[float]:
     Extract the number of residues participating in secondary structures
     on each frame.
     """
-    xvg = os.path.join(simulation_directory, "scount.xvg")
-    structs = np.loadtxt(xvg, comments=["@", "#"], unpack=True)
+    xvg_path = os.path.join(simulation_directory, "scount.xvg")
+    structs = np.loadtxt(xvg_path, comments=["@", "#"], unpack=True)
 
     if isinstance(structs[1], List):
         structural = structs[1]
