@@ -666,8 +666,39 @@ def plot_series(
     plot(Q, session.sasa, ["ts", "sasa"], "SASA")
     plot(Q, session.radgyr, ["ts", "radgyr"], "RADGYR")
 
-    print(session.secondary_structure_n)
-    plot(Q, session.secondary_structure_n, ["ts", "secondary", "strut"], "NSECONDARY")
+    # Process and plot 'secondary struct n' data structures.
+    sec_struct = session.secondary_structure_n
+    # print(f"Secondary structure data shape: {identify_list_object(sec_struct)}")
+    plot(Q, analyze_secondary_structs(sec_struct), ["ts", "secondary", "strut"], "NSECONDARY")
+
+
+def analyze_secondary_structs(obj):
+    """
+    Process 'secondary struct n' data.
+    Raw, primarily parsed data from source
+    (GROMACS's do_dssp's xcount.xvg file) is stored in the
+    sessions in order to maximize compatibility with different GROMACS versions.
+    A downside further processing is required to plot the information,
+    and this is done here.
+
+    The post-processing consists in simply summing the different
+    columns in the original data.
+    But this may require updates in the future.
+    """
+
+    return [
+        [sum(j[1:]) for j in k.T]
+        for k in obj
+    ]
+
+
+def identify_list_object(obj):
+    """ Identify shapes on possibly 'ragged list' arrangements."""
+
+    try:
+        return obj.shape
+    except AttributeError:
+        return [k.shape for k in obj]
 
 
 def slice_to_indexes(
